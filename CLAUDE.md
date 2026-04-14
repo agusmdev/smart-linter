@@ -8,10 +8,10 @@ Smart Linter detects heuristic code quality issues that ruff cannot catch. Run i
 
 ```bash
 # Install with uv
-uv tool install "git+https://github.com/croto-bot/smart-linter.git"
+uv tool install "git+https://github.com/agusmdev/smart-linter.git"
 
 # Or run one-shot without installing
-uvx --from "git+https://github.com/croto-bot/smart-linter.git" smart-linter check src/
+uvx --from "git+https://github.com/agusmdev/smart-linter.git" smart-linter check src/
 ```
 
 ## Commands
@@ -81,7 +81,7 @@ Smart Linter ships an MCP server for direct integration with AI agents (Claude, 
 
 ```bash
 # Install with MCP support
-uv tool install "git+https://github.com/croto-bot/smart-linter.git[mcp]"
+uv tool install "git+https://github.com/agusmdev/smart-linter.git[mcp]"
 ```
 
 Add to your MCP client config (e.g. `.claude/settings.json`):
@@ -90,7 +90,7 @@ Add to your MCP client config (e.g. `.claude/settings.json`):
   "mcpServers": {
     "smart-linter": {
       "command": "uvx",
-      "args": ["--from", "git+https://github.com/croto-bot/smart-linter.git[mcp]", "python", "-m", "smart_linter.mcp_server"]
+      "args": ["--from", "git+https://github.com/agusmdev/smart-linter.git[mcp]", "python", "-m", "smart_linter.mcp_server"]
     }
   }
 }
@@ -102,7 +102,7 @@ Or for Cursor (`.cursor/mcp.json`):
   "mcpServers": {
     "smart-linter": {
       "command": "uvx",
-      "args": ["--from", "git+https://github.com/croto-bot/smart-linter.git[mcp]", "python", "-m", "smart_linter.mcp_server"]
+      "args": ["--from", "git+https://github.com/agusmdev/smart-linter.git[mcp]", "python", "-m", "smart_linter.mcp_server"]
     }
   }
 }
