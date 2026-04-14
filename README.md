@@ -12,8 +12,18 @@ Ruff is excellent for style and syntax linting, but it runs entirely in Rust and
 
 ## Install
 
+Requires [uv](https://docs.astral.sh/uv/). No pip needed.
+
 ```bash
-pip install smart-linter
+# Run directly without installing (one-shot)
+uvx --from "git+https://github.com/croto-bot/smart-linter.git" smart-linter check src/
+
+# Or install persistently
+uv tool install "git+https://github.com/croto-bot/smart-linter.git"
+smart-linter check src/
+
+# With MCP server support (for AI agents)
+uv tool install "git+https://github.com/croto-bot/smart-linter.git[mcp]"
 ```
 
 ## Quick Start
@@ -191,7 +201,7 @@ smart-linter check src/ --fix
 Smart Linter ships an MCP server for direct integration with AI agents:
 
 ```bash
-pip install smart-linter[mcp]
+uv tool install "git+https://github.com/croto-bot/smart-linter.git[mcp]"
 ```
 
 Add to your MCP client config (e.g. `.claude/settings.json`):
@@ -199,8 +209,8 @@ Add to your MCP client config (e.g. `.claude/settings.json`):
 {
   "mcpServers": {
     "smart-linter": {
-      "command": "python",
-      "args": ["-m", "smart_linter.mcp_server"]
+      "command": "uvx",
+      "args": ["--from", "git+https://github.com/croto-bot/smart-linter.git[mcp]", "python", "-m", "smart_linter.mcp_server"]
     }
   }
 }
@@ -211,8 +221,8 @@ Or for Cursor (`.cursor/mcp.json`):
 {
   "mcpServers": {
     "smart-linter": {
-      "command": "python",
-      "args": ["-m", "smart_linter.mcp_server"]
+      "command": "uvx",
+      "args": ["--from", "git+https://github.com/croto-bot/smart-linter.git[mcp]", "python", "-m", "smart_linter.mcp_server"]
     }
   }
 }
@@ -267,8 +277,8 @@ smart-linter check src/ --format sarif > results.sarif
 
 ## Requirements
 
-- Python 3.11+
-- click>=8.0
+- [uv](https://docs.astral.sh/uv/)
+- Python 3.11+ (managed by uv automatically)
 
 ## License
 
