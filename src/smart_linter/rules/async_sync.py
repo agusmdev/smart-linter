@@ -258,6 +258,94 @@ def _get_blocking_call_name(
     return None
 
 
+TRANSITIVE_DEPTH_LIMIT = 5
+
+
+def _build_function_index(
+    tree: ast.AST,
+) -> dict[str, ast.FunctionDef | ast.AsyncFunctionDef]:
+    index: dict[str, ast.FunctionDef | ast.AsyncFunctionDef] = {}
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            index[node.name] = node
+    return index
+
+
+def _resolve_call_target(
+    call: ast.Call,
+    func_index: dict[str, ast.FunctionDef | ast.AsyncFunctionDef],
+) -> ast.FunctionDef | ast.AsyncFunctionDef | None:
+    if isinstance(call.func, ast.Name):
+        target = func_index.get(call.func.id)
+        if target is not None and target is not call:
+            return target
+    return None
+
+
+def _extract_depends_targets(
+    func: ast.AsyncFunctionDef,
+) -> list[str]:
+    targets: list[str] = []
+    for default in func.args.defaults:
+        if (
+            isinstance(default, ast.Call)
+            and isinstance(default.func, ast.Name)
+            and default.func.id == "Depends"
+            and default.args
+            and isinstance(default.args[0], ast.Name)
+        ):
+            targets.append(default.args[0].id)
+    return targets
+
+
+def _find_transitive_blocking(
+    func_body: ast.FunctionDef | ast.AsyncFunctionDef,
+    func_index: dict[str, ast.FunctionDef | ast.AsyncFunctionDef],
+    parent_map: dict[ast.AST, ast.AST],
+    visited: frozenset[str] | None = None,
+    depth: int = 0,
+) -> list[tuple[ast.Call, str, list[str]]]:
+    if depth >= TRANSITIVE_DEPTH_LIMIT:
+        return []
+
+    visited = visited or frozenset()
+    results: list[tuple[ast.Call, str, list[str]]] = []
+
+    for node in ast.walk(func_body):
+        if (
+            isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+            and node is not func_body
+        ):
+            continue
+
+        if not isinstance(node, ast.Call):
+            continue
+
+        if _is_awaited(node, parent_map) or _is_in_safe_wrapper(node, parent_map):
+            continue
+
+        direct_name = _get_blocking_call_name(node, parent_map)
+        if direct_name:
+            results.append((node, direct_name, []))
+            continue
+
+        target = _resolve_call_target(node, func_index)
+        if target is None or target.name in visited:
+            continue
+
+        deeper = _find_transitive_blocking(
+            target,
+            func_index,
+            parent_map,
+            visited | {target.name},
+            depth + 1,
+        )
+        for blocking_node, blocking_name, chain in deeper:
+            results.append((blocking_node, blocking_name, [target.name] + chain))
+
+    return results
+
+
 class AsyncSyncRule(Rule):
     id: ClassVar[str] = "ASYNC001"
     description: ClassVar[str] = (
@@ -268,7 +356,9 @@ class AsyncSyncRule(Rule):
 
     def check(self, tree, filename: str = "") -> list[Violation]:
         parent_map = _build_parent_map(tree)
+        func_index = _build_function_index(tree)
         violations: list[Violation] = []
+        seen: set[tuple[str, int, str]] = set()
 
         for node in ast.walk(tree):
             if not isinstance(node, ast.AsyncFunctionDef):
@@ -277,53 +367,101 @@ class AsyncSyncRule(Rule):
             if not any(_is_fastapi_route_decorator(d) for d in node.decorator_list):
                 continue
 
-            self._check_async_body(node, parent_map, filename, violations)
+            self._check_body(node, func_index, parent_map, filename, violations, seen)
+
+            for dep_name in _extract_depends_targets(node):
+                dep_func = func_index.get(dep_name)
+                if dep_func is None:
+                    continue
+                self._check_body(
+                    node,
+                    func_index,
+                    parent_map,
+                    filename,
+                    violations,
+                    seen,
+                    extra_entry=dep_func,
+                    extra_label=f"Depends({dep_name})",
+                )
 
         return violations
 
-    def _check_async_body(
+    def _check_body(
         self,
-        func: ast.AsyncFunctionDef,
+        endpoint: ast.AsyncFunctionDef,
+        func_index: dict[str, ast.FunctionDef | ast.AsyncFunctionDef],
         parent_map: dict[ast.AST, ast.AST],
         filename: str,
         violations: list[Violation],
+        seen: set[tuple[str, int, str]],
+        extra_entry: ast.FunctionDef | ast.AsyncFunctionDef | None = None,
+        extra_label: str = "",
     ) -> None:
-        for child in ast.walk(func):
-            if (
-                isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef))
-                and child is not func
-            ):
-                continue
+        bodies = [endpoint]
+        if extra_entry is not None:
+            bodies.append(extra_entry)
 
-            if not isinstance(child, ast.Call):
-                continue
-
-            if _is_awaited(child, parent_map):
-                continue
-
-            if _is_in_safe_wrapper(child, parent_map):
-                continue
-
-            call_name = _get_blocking_call_name(child, parent_map)
-            if call_name is None:
-                continue
-
-            fix = self._build_fix(call_name)
-
-            violations.append(
-                Violation(
-                    rule_id=self.id,
-                    message=f"Blocking sync call `{call_name}()` in async FastAPI endpoint `{func.name}`",
-                    location=Location(row=child.lineno, column=child.col_offset + 1),
-                    end_location=Location(
-                        row=child.end_lineno or child.lineno,
-                        column=(child.end_col_offset or child.col_offset) + 1,
-                    ),
-                    severity=self.severity,
-                    fix=fix,
-                    filename=filename,
-                )
+        for body in bodies:
+            is_depends = body is extra_entry
+            transitive = _find_transitive_blocking(
+                body,
+                func_index,
+                parent_map,
             )
+            for blocking_node, blocking_name, chain in transitive:
+                key = (filename, blocking_node.lineno, blocking_name)
+                if key in seen:
+                    continue
+                seen.add(key)
+
+                if is_depends and not chain:
+                    chain = [extra_entry.name]
+
+                is_transitive = len(chain) > 0
+                if is_transitive:
+                    entry_func = chain[0]
+                    call_path = " → ".join(chain + [blocking_name])
+                    source = extra_label or endpoint.name
+                    message = (
+                        f"Transitive blocking call in async endpoint `{source}`: "
+                        f"`{entry_func}()` reaches `{blocking_name}()` via {call_path}"
+                    )
+                    fix = FixSuggestion(
+                        title=f"Wrap `{entry_func}()` call in `asyncio.to_thread()`",
+                        replacement=f"await asyncio.to_thread({entry_func}, ...)",
+                        explanation=(
+                            f"`{entry_func}()` transitively calls `{blocking_name}()` "
+                            f"which blocks the event loop. Wrap in `asyncio.to_thread()` "
+                            f"or refactor to use async alternatives."
+                        ),
+                    )
+                else:
+                    message = (
+                        f"Blocking sync call `{blocking_name}()` in async "
+                        f"FastAPI endpoint `{endpoint.name}`"
+                    )
+                    fix = self._build_fix(blocking_name)
+
+                violations.append(
+                    Violation(
+                        rule_id=self.id,
+                        message=message,
+                        location=Location(
+                            row=blocking_node.lineno,
+                            column=blocking_node.col_offset + 1,
+                        ),
+                        end_location=Location(
+                            row=blocking_node.end_lineno or blocking_node.lineno,
+                            column=(
+                                blocking_node.end_col_offset or blocking_node.col_offset
+                            )
+                            + 1,
+                        ),
+                        severity=self.severity,
+                        fix=fix,
+                        filename=filename,
+                    )
+                )
 
     def _build_fix(self, call_name: str) -> FixSuggestion | None:
         if call_name in BLOCKING_CALLS:

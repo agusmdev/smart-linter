@@ -391,3 +391,162 @@ async def read_file():
 """
     violations = _check_code(code)
     assert len(violations) == 0
+
+
+def test_detects_transitive_blocking_call():
+    code = """
+import requests
+from fastapi import FastAPI
+app = FastAPI()
+
+def _helper():
+    return requests.get("https://api.example.com")
+
+@app.get("/x")
+async def get_x():
+    data = _helper()
+    return data
+"""
+    violations = _check_code(code)
+    assert len(violations) == 1
+    assert (
+        "transitive" in violations[0].message.lower()
+        or "_helper" in violations[0].message
+    )
+    assert "requests.get" in violations[0].message
+
+
+def test_detects_transitive_chain_depth_2():
+    code = """
+import requests
+from fastapi import FastAPI
+app = FastAPI()
+
+def _inner():
+    requests.get("https://api.example.com")
+
+def _outer():
+    _inner()
+
+@app.get("/x")
+async def get_x():
+    _outer()
+"""
+    violations = _check_code(code)
+    assert len(violations) == 1
+    assert "_outer" in violations[0].message
+    assert "_inner" in violations[0].message
+
+
+def test_no_transitive_flag_when_safe_wrapped():
+    code = """
+import asyncio, requests
+from fastapi import FastAPI
+app = FastAPI()
+
+def _helper():
+    return requests.get("https://api.example.com")
+
+@app.get("/x")
+async def get_x():
+    data = await asyncio.to_thread(_helper)
+    return data
+"""
+    violations = _check_code(code)
+    assert len(violations) == 0
+
+
+def test_detects_depends_with_blocking():
+    code = """
+import requests
+from fastapi import FastAPI, Depends
+app = FastAPI()
+
+def get_db():
+    requests.get("https://internal/config")
+    return "db"
+
+@app.get("/x")
+async def get_x(db=Depends(get_db)):
+    return {"db": db}
+"""
+    violations = _check_code(code)
+    assert len(violations) == 1
+    assert (
+        "Depends(get_db)" in violations[0].message or "get_db" in violations[0].message
+    )
+
+
+def test_recursive_call_no_infinite_loop():
+    code = """
+import requests
+from fastapi import FastAPI
+app = FastAPI()
+
+def _recursive(n):
+    if n > 0:
+        return _recursive(n - 1)
+    return requests.get("https://api.example.com")
+
+@app.get("/x")
+async def get_x():
+    return _recursive(5)
+"""
+    violations = _check_code(code)
+    assert len(violations) == 1
+
+
+def test_no_duplicate_violations():
+    code = """
+import requests
+from fastapi import FastAPI
+app = FastAPI()
+
+def _helper():
+    requests.get("https://api.example.com")
+
+@app.get("/x")
+async def get_x():
+    _helper()
+    _helper()
+"""
+    violations = _check_code(code)
+    assert len(violations) == 1
+
+
+def test_transitive_and_direct_both_detected():
+    code = """
+import requests, time
+from fastapi import FastAPI
+app = FastAPI()
+
+def _helper():
+    requests.get("https://api.example.com")
+
+@app.get("/x")
+async def get_x():
+    _helper()
+    time.sleep(1)
+"""
+    violations = _check_code(code)
+    assert len(violations) == 2
+
+
+def test_transitive_fix_suggests_to_thread():
+    code = """
+import requests
+from fastapi import FastAPI
+app = FastAPI()
+
+def _helper():
+    return requests.get("https://api.example.com")
+
+@app.get("/x")
+async def get_x():
+    data = _helper()
+    return data
+"""
+    violations = _check_code(code)
+    assert len(violations) == 1
+    assert violations[0].fix is not None
+    assert "asyncio.to_thread(_helper" in violations[0].fix.replacement
