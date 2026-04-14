@@ -1,0 +1,61 @@
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "smart-linter"
+version = "0.1.0"
+description = "Pluggable Python linter with heuristic rules, ruff-compatible output, and AI harness integration"
+readme = "README.md"
+requires-python = ">=3.11"
+license = {text = "MIT"}
+authors = [
+    {name = "Smart Linter Contributors"},
+]
+keywords = ["linter", "static-analysis", "fastapi", "async", "ai", "ruff"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Software Development :: Quality Assurance",
+    "Topic :: Software Development :: Testing",
+]
+dependencies = [
+    "click>=8.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
+    "pytest-cov>=4.0",
+]
+mcp = [
+    "mcp>=1.0",
+]
+
+[project.scripts]
+smart-linter = "smart_linter.cli:main"
+
+[project.entry-points."smart_linter.rules"]
+async_sync = "smart_linter.rules.async_sync:AsyncSyncRule"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.smart-linter]
+# Rules enabled by default. Use "all" to enable everything, or list specific rule IDs.
+# select = ["ASYNC001"]
+# Ignore specific rules:
+# ignore = []
+# Custom rule paths (Python modules/classes to load):
+# custom-rules = []
+# Minimum severity to report: "error", "warning", "info"
+# min-severity = "info"
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]

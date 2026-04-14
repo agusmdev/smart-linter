@@ -1,0 +1,393 @@
+"""Tests for ASYNC001 rule: sync blocking calls in async FastAPI endpoints."""
+
+import ast
+from pathlib import Path
+
+from smart_linter.rules.async_sync import AsyncSyncRule
+
+
+FIXTURES_DIR = Path(__file__).parent / "fixtures"
+
+
+def _check_code(code: str, filename: str = "test.py") -> list:
+    tree = ast.parse(code)
+    rule = AsyncSyncRule()
+    return rule.check(tree, filename=filename)
+
+
+def test_detects_requests_get_in_async_endpoint():
+    code = """
+import requests
+from fastapi import FastAPI
+app = FastAPI()
+
+@app.get("/data")
+async def get_data():
+    response = requests.get("https://api.example.com")
+    return response.json()
+"""
+    violations = _check_code(code)
+    assert len(violations) == 1
+    assert violations[0].rule_id == "ASYNC001"
+    assert "requests.get" in violations[0].message
+
+
+def test_detects_time_sleep_in_async_endpoint():
+    code = """
+import time
+from fastapi import FastAPI
+app = FastAPI()
+
+@app.get("/slow")
+async def slow():
+    time.sleep(5)
+    return {}
+"""
+    violations = _check_code(code)
+    assert len(violations) == 1
+    assert "time.sleep" in violations[0].message
+
+
+def test_detects_subprocess_in_async_endpoint():
+    code = """
+import subprocess
+from fastapi import FastAPI
+app = FastAPI()
+
+@app.get("/run")
+async def run_cmd():
+    result = subprocess.run(["echo", "hi"], capture_output=True)
+    return {}
+"""
+    violations = _check_code(code)
+    assert len(violations) == 1
+    assert "subprocess.run" in violations[0].message
+
+
+def test_no_violation_for_sync_def_endpoint():
+    code = """
+import requests
+from fastapi import FastAPI
+app = FastAPI()
+
+@app.get("/data")
+def get_data():
+    response = requests.get("https://api.example.com")
+    return response.json()
+"""
+    violations = _check_code(code)
+    assert len(violations) == 0
+
+
+def test_no_violation_for_non_endpoint_async():
+    code = """
+import requests
+
+async def some_helper():
+    response = requests.get("https://api.example.com")
+    return response.json()
+"""
+    violations = _check_code(code)
+    assert len(violations) == 0
+
+
+def test_no_violation_for_safe_wrapper():
+    code = """
+import asyncio
+import requests
+from fastapi import FastAPI
+app = FastAPI()
+
+@app.get("/safe")
+async def safe():
+    result = await asyncio.to_thread(requests.get, "https://api.example.com")
+    return {}
+"""
+    violations = _check_code(code)
+    assert len(violations) == 0
+
+
+def test_no_violation_for_run_in_threadpool():
+    code = """
+from fastapi import FastAPI
+from fastapi.concurrency import run_in_threadpool
+import requests
+app = FastAPI()
+
+@app.get("/safe")
+async def safe():
+    result = await run_in_threadpool(requests.get, "https://api.example.com")
+    return {}
+"""
+    violations = _check_code(code)
+    assert len(violations) == 0
+
+
+def test_detects_router_decorator():
+    code = """
+import requests
+from fastapi import APIRouter
+router = APIRouter()
+
+@router.post("/create")
+async def create():
+    requests.post("https://api.example.com/create", json={})
+    return {}
+"""
+    violations = _check_code(code)
+    assert len(violations) == 1
+    assert "requests.post" in violations[0].message
+
+
+def test_detects_multiple_violations_in_one_endpoint():
+    code = """
+import time
+import requests
+from fastapi import FastAPI
+app = FastAPI()
+
+@app.get("/bad")
+async def bad():
+    time.sleep(1)
+    requests.get("https://api.example.com")
+    return {}
+"""
+    violations = _check_code(code)
+    assert len(violations) == 2
+
+
+def test_detects_os_system():
+    code = """
+import os
+from fastapi import FastAPI
+app = FastAPI()
+
+@app.get("/cmd")
+async def run():
+    os.system("echo hello")
+    return {}
+"""
+    violations = _check_code(code)
+    assert len(violations) == 1
+    assert "os.system" in violations[0].message
+
+
+def test_detects_input():
+    code = """
+from fastapi import FastAPI
+app = FastAPI()
+
+@app.get("/input")
+async def ask():
+    name = input("Name: ")
+    return {"name": name}
+"""
+    violations = _check_code(code)
+    assert len(violations) == 1
+    assert "input" in violations[0].message
+
+
+def test_no_violation_for_normal_function():
+    code = """
+import time
+import requests
+
+def not_an_endpoint():
+    time.sleep(1)
+    requests.get("https://example.com")
+    return {}
+"""
+    violations = _check_code(code)
+    assert len(violations) == 0
+
+
+def test_violation_has_fix_suggestion():
+    code = """
+import requests
+from fastapi import FastAPI
+app = FastAPI()
+
+@app.get("/data")
+async def get_data():
+    requests.get("https://api.example.com")
+    return {}
+"""
+    violations = _check_code(code)
+    assert len(violations) == 1
+    assert violations[0].fix is not None
+    assert violations[0].fix.replacement is not None
+    assert "async_client" in violations[0].fix.replacement
+    assert "httpx" in violations[0].fix.explanation
+
+
+def test_time_sleep_fix_suggests_asyncio_sleep():
+    code = """
+import time
+from fastapi import FastAPI
+app = FastAPI()
+
+@app.get("/slow")
+async def slow():
+    time.sleep(5)
+    return {}
+"""
+    violations = _check_code(code)
+    assert len(violations) == 1
+    assert violations[0].fix is not None
+    assert "asyncio.sleep" in violations[0].fix.replacement
+
+
+def test_full_fixture_file():
+    fixture = FIXTURES_DIR / "fastapi_example.py"
+    if not fixture.exists():
+        return
+    tree = ast.parse(fixture.read_text())
+    rule = AsyncSyncRule()
+    violations = rule.check(tree, filename=str(fixture))
+
+    violation_calls = [v.message for v in violations]
+    assert any("requests.get" in m and "bad_sync_request" in m for m in violation_calls)
+    assert any("time.sleep" in m for m in violation_calls)
+    assert any("subprocess.run" in m for m in violation_calls)
+    assert any("requests.post" in m for m in violation_calls)
+
+    good_endpoints = {
+        "good_async",
+        "good_safe_wrapper",
+        "good_safe_threadpool",
+        "no_false_positive",
+    }
+    for v in violations:
+        for endpoint in good_endpoints:
+            assert endpoint not in v.message
+
+    assert not any("not_an_endpoint" in v.message for v in violations)
+    assert not any("sync_def_endpoint" in v.message for v in violations)
+
+
+def test_detects_open_call():
+    code = """
+from fastapi import FastAPI
+app = FastAPI()
+
+@app.get("/file")
+async def read_file():
+    with open("data.txt") as f:
+        return f.read()
+"""
+    violations = _check_code(code)
+    assert len(violations) == 1
+    assert "open" in violations[0].message
+
+
+def test_detects_bare_open():
+    code = """
+from fastapi import FastAPI
+app = FastAPI()
+
+@app.get("/file")
+async def read_file():
+    f = open("data.txt")
+    content = f.read()
+    return {"content": content}
+"""
+    violations = _check_code(code)
+    assert len(violations) == 1
+    assert "open" in violations[0].message
+
+
+def test_detects_pathlib_read_text():
+    code = """
+from pathlib import Path
+from fastapi import FastAPI
+app = FastAPI()
+
+@app.get("/file")
+async def read_file():
+    content = Path("data.txt").read_text()
+    return {"content": content}
+"""
+    violations = _check_code(code)
+    assert len(violations) == 1
+    assert "Path(...).read_text" in violations[0].message
+
+
+def test_detects_pathlib_write_text():
+    code = """
+from pathlib import Path
+from fastapi import FastAPI
+app = FastAPI()
+
+@app.post("/file")
+async def write_file():
+    Path("data.txt").write_text("hello")
+    return {"status": "ok"}
+"""
+    violations = _check_code(code)
+    assert len(violations) == 1
+    assert "Path(...).write_text" in violations[0].message
+
+
+def test_detects_httpx_sync_client():
+    code = """
+import httpx
+from fastapi import FastAPI
+app = FastAPI()
+
+@app.get("/data")
+async def get_data():
+    response = httpx.get("https://api.example.com")
+    return response.json()
+"""
+    violations = _check_code(code)
+    assert len(violations) == 1
+    assert "httpx.get" in violations[0].message
+
+
+def test_open_fix_suggests_aiofiles():
+    code = """
+from fastapi import FastAPI
+app = FastAPI()
+
+@app.get("/file")
+async def read_file():
+    f = open("data.txt")
+    return {}
+"""
+    violations = _check_code(code)
+    assert len(violations) == 1
+    assert violations[0].fix is not None
+    assert "aiofiles" in violations[0].fix.replacement
+
+
+def test_pathlib_fix_suggests_anyio_path():
+    code = """
+from pathlib import Path
+from fastapi import FastAPI
+app = FastAPI()
+
+@app.get("/file")
+async def read_file():
+    content = Path("data.txt").read_text()
+    return {"content": content}
+"""
+    violations = _check_code(code)
+    assert len(violations) == 1
+    assert violations[0].fix is not None
+    assert "anyio.Path" in violations[0].fix.replacement
+
+
+def test_no_violation_open_wrapped_in_aiofiles():
+    code = """
+import aiofiles
+from fastapi import FastAPI
+app = FastAPI()
+
+@app.get("/file")
+async def read_file():
+    async with aiofiles.open("data.txt") as f:
+        content = await f.read()
+    return {"content": content}
+"""
+    violations = _check_code(code)
+    assert len(violations) == 0
