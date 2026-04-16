@@ -172,3 +172,18 @@ def test_not_condition_check():
     violations = _check_code("if not (x and x):\n    pass\n")
     assert len(violations) == 1
     assert "`x and x`" in violations[0].message
+
+
+def test_compare_lt_self_no_violation():
+    violations = _check_code("if x < x:\n    pass\n")
+    assert len(violations) == 0
+
+
+def test_compare_gt_self_no_violation():
+    violations = _check_code("if x > x:\n    pass\n")
+    assert len(violations) == 0
+
+
+def test_non_isinstance_call_not_flagged():
+    violations = _check_code("if foo():\n    pass\n")
+    assert len(violations) == 0

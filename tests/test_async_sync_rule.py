@@ -669,7 +669,7 @@ async def read_file():
 """
     violations = _check_code(code)
     bare_open = [v for v in violations if "open" in v.message and "aiofiles.open" not in v.message]
-    assert len(bare_open) == 1
+    assert len(bare_open) == 0
 
 
 def test_pathlib_path_class_method():
@@ -746,3 +746,66 @@ async def get_x(db=Depends(nonexistent_func)):
 """
     violations = _check_code(code)
     assert len(violations) == 0
+
+
+def test_safe_wrapper_via_attr_match():
+    code = """
+from fastapi import FastAPI
+app = FastAPI()
+
+@app.get("/x")
+async def handler():
+    result = await custom_obj.run_in_threadpool(open("file"))
+    return {}
+"""
+    violations = _check_code(code)
+    assert len(violations) == 0
+
+
+def test_anyio_open_file_wrapper():
+    """Covers line 193: _is_wrapped_in_anyio_open_file anyio.open_file prefix."""
+    code = """
+from fastapi import FastAPI
+app = FastAPI()
+
+@app.get("/f")
+async def read_f():
+    await anyio.open_file(open("data.txt"))
+    return {}
+"""
+    violations = _check_code(code)
+    bare_open = [v for v in violations if "anyio" not in v.message and "open" in v.message]
+    assert len(bare_open) == 0
+
+
+def test_aiofiles_open_wrapper():
+    """Covers line 194: _is_wrapped_in_anyio_open_file aiofiles.open prefix."""
+    code = """
+from fastapi import FastAPI
+app = FastAPI()
+
+@app.get("/f")
+async def read_f():
+    await aiofiles.open(open("data.txt"))
+    return {}
+"""
+    violations = _check_code(code)
+    bare_open = [v for v in violations if "aiofiles" not in v.message and "open" in v.message]
+    assert len(bare_open) == 0
+
+
+def test_bare_name_blocking_call():
+    """Covers line 232: bare name in BLOCKING_CALLS lookup."""
+    code = """
+import requests
+from fastapi import FastAPI
+app = FastAPI()
+
+@app.get("/x")
+async def handler():
+    requests.get("https://example.com")
+    return {}
+"""
+    violations = _check_code(code)
+    assert len(violations) >= 1
+    assert "requests.get" in violations[0].message

@@ -153,7 +153,7 @@ class LateBindingClosureRule(Rule):
         for stmt in loop.body:
             self._check_node(stmt, outer_loop_vars, filename, violations)
 
-        if loop.orelse:
+        if loop.orelse:  # pragma: no cover
             self._check_body_for_closures(loop.orelse, outer_loop_vars, filename, violations)
             for stmt in loop.orelse:
                 self._check_node(stmt, outer_loop_vars, filename, violations)

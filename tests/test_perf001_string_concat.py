@@ -259,3 +259,42 @@ for item in items:
 """
     violations = _check_code(code)
     assert len(violations) == 0
+
+
+def test_concat_inside_comprehension_not_flagged():
+    code = """
+result = ""
+x = [result for item in items if result + "a"]
+"""
+    violations = _check_code(code)
+    assert len(violations) == 0
+
+
+def test_augassign_not_name_target_skipped():
+    code = """
+items = ""
+for item in data:
+    items[0] += "x"
+"""
+    violations = _check_code(code)
+    assert len(violations) == 0
+
+
+def test_assign_add_multi_target_skipped():
+    code = """
+result = ""
+for item in items:
+    a = b = result + "x"
+"""
+    violations = _check_code(code)
+    assert len(violations) == 0
+
+
+def test_assign_add_non_name_target_skipped():
+    code = """
+result = ""
+for item in items:
+    items[0] = result + "x"
+"""
+    violations = _check_code(code)
+    assert len(violations) == 0

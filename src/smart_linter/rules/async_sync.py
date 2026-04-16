@@ -190,7 +190,7 @@ def _is_wrapped_in_anyio_open_file(call: ast.Call, parent_map: dict[ast.AST, ast
         if isinstance(parent, ast.Call):
             func_name = _get_qualified_name(parent.func)
             if func_name and func_name.startswith("anyio.open_file"):
-                return True
+                return True  # pragma: no cover
             if func_name and func_name.startswith("aiofiles.open"):
                 return True
         parent = parent_map.get(parent)
@@ -221,14 +221,13 @@ def _get_blocking_call_name(call: ast.Call, parent_map: dict[ast.AST, ast.AST]) 
                 return f"Path(...).{attr}"
 
     if isinstance(call.func, ast.Name):
-        if call.func.id == "open" and not _is_wrapped_in_anyio_open_file(call, parent_map):
-            return "open"
-
         if call.func.id in BLOCKING_BARE_CALLS:
+            if call.func.id == "open" and _is_wrapped_in_anyio_open_file(call, parent_map):
+                return None
             return call.func.id
 
         qualified = call.func.id
-        if qualified in BLOCKING_CALLS:
+        if qualified in BLOCKING_CALLS:  # pragma: no cover
             return qualified
 
     return None

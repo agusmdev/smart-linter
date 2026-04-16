@@ -242,3 +242,11 @@ class TestGetAllRules:
         with patch("smart_linter.registry._load_custom_rule", return_value=None):
             rules = get_all_rules(custom_paths=["broken:Rule"])
         assert "STUB001" not in rules
+
+
+def test_discover_builtin_rules_handles_import_error():
+    from smart_linter.registry import _discover_builtin_rules
+
+    with patch("smart_linter.registry.importlib.import_module", side_effect=ImportError("broken")):
+        rules = _discover_builtin_rules()
+    assert isinstance(rules, dict)

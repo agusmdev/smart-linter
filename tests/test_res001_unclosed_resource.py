@@ -434,3 +434,42 @@ class Handler:
     violations = _check_code(code)
     assert len(violations) == 1
     assert "open" in violations[0].message
+
+
+def test_non_resource_attr_returns_none():
+    from smart_linter.rules.unclosed_resource import _is_resource_call
+
+    code = "obj.random()"
+    tree = ast.parse(code)
+    call = tree.body[0].value
+    result = _is_resource_call(call)
+    assert result is None
+
+
+def test_find_enclosing_body_returns_none_at_top():
+    from smart_linter.rules.unclosed_resource import _find_enclosing_body
+
+    code = "x = 1"
+    tree = ast.parse(code)
+    node = tree.body[0]
+    parent_map = {node: tree}
+    assert _find_enclosing_body(node, parent_map) is None
+
+
+def test_yield_from_tuple_not_safe():
+    code = """
+def gen():
+    f = open("data.txt")
+    yield from (f,)
+"""
+    violations = _check_code(code)
+    assert len(violations) == 1
+
+
+def test_non_resource_bare_name_call():
+    from smart_linter.rules.unclosed_resource import _is_resource_call
+
+    code = "x[0]()"
+    tree = ast.parse(code)
+    call = tree.body[0].value
+    assert _is_resource_call(call) is None

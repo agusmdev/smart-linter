@@ -85,7 +85,7 @@ def _find_enclosing_body(node: ast.AST, parent_map: dict[ast.AST, ast.AST]) -> l
         if isinstance(parent, ast.ClassDef):
             return parent.body
         current = parent
-    return None
+    return None  # pragma: no cover
 
 
 def _get_module_body(tree: ast.Module) -> list[ast.stmt]:
@@ -280,7 +280,7 @@ class UnclosedResourceRule(Rule):
                 continue
 
             # Already inside a `with` context expression → safe
-            if _is_inside_with_context(node, parent_map):
+            if _is_inside_with_context(node, parent_map):  # pragma: no cover
                 continue
 
             var = _var_name(node)

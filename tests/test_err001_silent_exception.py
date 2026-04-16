@@ -514,3 +514,127 @@ def test_empty_handler_body():
     handler = ast.ExceptHandler(type=ast.Name(id="ValueError"), name=None, body=[])
     rule = SilentExceptionRule()
     assert rule._is_silent_handler(handler) is True
+
+
+def test_non_meaningful_call_continues():
+    code = """
+try:
+    risky()
+except ValueError:
+    something.random()
+"""
+    violations = _check_code(code)
+    assert len(violations) == 1
+
+
+def test_expr_non_constant_continues():
+    code = """
+try:
+    risky()
+except ValueError:
+    x
+"""
+    violations = _check_code(code)
+    assert len(violations) == 1
+
+
+def test_augassign_non_call_continues():
+    code = """
+try:
+    risky()
+except ValueError:
+    x += 1
+"""
+    violations = _check_code(code)
+    assert len(violations) == 1
+
+
+def test_annassign_non_call_continues():
+    code = """
+try:
+    risky()
+except ValueError:
+    x: int = 42
+"""
+    violations = _check_code(code)
+    assert len(violations) == 1
+
+
+def test_unrecognized_stmt_is_meaningful():
+    code = """
+try:
+    risky()
+except ValueError:
+    for x in y:
+        pass
+"""
+    violations = _check_code(code)
+    assert len(violations) == 0
+
+
+def test_tuple_exception_not_control_flow():
+    code = """
+try:
+    risky()
+except (ValueError, TypeError):
+    pass
+"""
+    violations = _check_code(code)
+    assert len(violations) == 1
+
+
+def test_meaningful_call_prefix_dot_match():
+    from smart_linter.rules.silent_exception import _is_meaningful_call
+
+    code = "logging.info.extra()"
+    tree = ast.parse(code)
+    call_func = tree.body[0].value.func
+    assert _is_meaningful_call(call_func) is True
+
+    code2 = """
+try:
+    risky()
+except ValueError:
+    logging.info("error occurred")
+"""
+    violations = _check_code(code2)
+    assert len(violations) == 0
+
+
+def test_tuple_unpack_assign_in_handler():
+    code = """
+try:
+    risky()
+except ValueError:
+    x, y = compute(), compute()
+"""
+    violations = _check_code(code)
+    assert len(violations) == 0
+
+
+def test_non_control_flow_tuple_exception():
+    from smart_linter.rules.silent_exception import _is_control_flow_exception
+
+    code = """
+try:
+    pass
+except (RuntimeError, KeyError):
+    pass
+"""
+    tree = ast.parse(code)
+    handler = tree.body[0].handlers[0]
+    assert _is_control_flow_exception(handler) is False
+
+
+def test_attribute_exception_not_control_flow():
+    from smart_linter.rules.silent_exception import _is_control_flow_exception
+
+    code = """
+try:
+    pass
+except custom_module.Error:
+    pass
+"""
+    tree = ast.parse(code)
+    handler = tree.body[0].handlers[0]
+    assert _is_control_flow_exception(handler) is False

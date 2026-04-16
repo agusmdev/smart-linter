@@ -1090,9 +1090,16 @@ class TestRun:
     def test_workers_clamped_to_uncached_count(self, tmp_path: Path):
         """Workers should be clamped to min(workers, len(uncached))."""
         f = _write_py(tmp_path, "a.py", "x = 42\n")
-        # Request 10 workers but only 1 file → should fall to sequential
         config = self._make_config(workers=10, no_cache=True)
 
         with patch("smart_linter.engine.get_all_rules", return_value={"DUMMY001": _DummyRule}):
             result = run([f], config)
         assert len(result) >= 1
+
+
+def test_rule_base_check_raises_not_implemented():
+    from smart_linter.models import Rule
+
+    rule = Rule()
+    with pytest.raises(NotImplementedError):
+        rule.check(ast.parse("x = 1"))

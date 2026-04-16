@@ -146,3 +146,9 @@ result2 = sum([y for y in items])
     assert len(violations) == 2
     assert "any" in violations[0].message
     assert "sum" in violations[1].message
+
+
+def test_consumer_with_no_args_not_flagged():
+    code = "x = list()"
+    violations = _check_code(code)
+    assert len(violations) == 0

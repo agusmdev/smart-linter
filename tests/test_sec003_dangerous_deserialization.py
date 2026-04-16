@@ -270,3 +270,21 @@ data = yaml.load(user_input, Loader=42)
 """
     violations = _check_code(code)
     assert len(violations) == 1
+
+
+def test_yaml_non_load_method_not_flagged():
+    code = """
+import yaml
+data = yaml.dump(obj)
+"""
+    violations = _check_code(code)
+    assert len(violations) == 0
+
+
+def test_bare_name_call_in_pickle_file_not_flagged():
+    code = """
+import pickle
+result = unknown_func()
+"""
+    violations = _check_code(code)
+    assert len(violations) == 0

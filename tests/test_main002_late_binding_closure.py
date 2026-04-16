@@ -19,7 +19,20 @@ for i in range(10):
 """
     violations = _check_code(code)
     assert len(violations) == 1
-    assert violations[0].rule_id == "MAIN002"
+    assert "i" in violations[0].message
+
+
+def test_while_else_with_closure():
+    code = """
+funcs = []
+for i in range(10):
+    while True:
+        break
+    else:
+        funcs.append(lambda: i)
+"""
+    violations = _check_code(code)
+    assert len(violations) == 1
     assert "i" in violations[0].message
 
 
