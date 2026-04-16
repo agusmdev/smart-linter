@@ -22,7 +22,7 @@ from fastapi import FastAPI
 app = FastAPI()
 
 @app.get("/data")
-async def get_data():
+async def get_data() -> dict:
     response = requests.get("https://api.example.com")
     return response.json()
 """
@@ -34,7 +34,7 @@ from fastapi import FastAPI
 app = FastAPI()
 
 @app.get("/data")
-async def get_data():
+async def get_data() -> dict:
     await asyncio.sleep(1)
     return {}
 """
