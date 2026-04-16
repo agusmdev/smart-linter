@@ -56,6 +56,7 @@ late_binding_closure = "smart_linter.rules.late_binding_closure:LateBindingClosu
 print_in_async = "smart_linter.rules.print_in_async:PrintInAsyncRule"
 unauthenticated_mutation = "smart_linter.rules.unauthenticated_mutation:UnauthenticatedMutationRule"
 missing_response_model = "smart_linter.rules.missing_response_model:MissingResponseModelRule"
+lost_exception_context = "smart_linter.rules.lost_exception_context:LostExceptionContextRule"
 
 [tool.setuptools.packages.find]
 where = ["src"]
