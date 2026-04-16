@@ -160,7 +160,7 @@ async def delete_item(
 
 
 @router.get("/health")
-async def health_check() -> bool:
+def health_check() -> bool:
     """Health check endpoint."""
     return True
 CLEAN_EOF

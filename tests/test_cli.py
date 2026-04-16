@@ -153,7 +153,8 @@ class TestCheckJSON:
         data = json.loads(result.output)
         assert isinstance(data, list)
         assert len(data) >= 1
-        assert data[0]["code"] == "ASYNC001"
+        codes = {v["code"] for v in data}
+        assert "ASYNC001" in codes
 
     def test_json_output_empty(self, tmp_path: Path):
         _write_file(tmp_path, "clean.py", CODE_CLEAN)
@@ -182,7 +183,8 @@ class TestCheckSARIF:
         assert len(runs) == 1
         assert runs[0]["tool"]["driver"]["name"] == "smart-linter"
         assert len(runs[0]["results"]) >= 1
-        assert runs[0]["results"][0]["ruleId"] == "ASYNC001"
+        rule_ids = {r["ruleId"] for r in runs[0]["results"]}
+        assert "ASYNC001" in rule_ids
 
     def test_sarif_output_empty(self, tmp_path: Path):
         _write_file(tmp_path, "clean.py", CODE_CLEAN)
@@ -288,11 +290,11 @@ class TestCheckSelectIgnore:
     def test_ignore_rule(self, tmp_path: Path):
         _write_file(tmp_path, "example.py", CODE_WITH_VIOLATION)
         runner = CliRunner()
-        result = runner.invoke(check, [str(tmp_path), "--ignore", "ASYNC001", "--format", "json"])
+        result = runner.invoke(check, [str(tmp_path), "--ignore", "ASYNC001", "--ignore", "ASYNC003", "--format", "json"])
         assert result.exit_code == 0
         data = json.loads(result.output)
-        # ASYNC001 should be filtered out
-        assert not any(v["code"] == "ASYNC001" for v in data)
+        # ASYNC001 and ASYNC003 should be filtered out
+        assert not any(v["code"] in ("ASYNC001", "ASYNC003") for v in data)
 
     def test_select_multiple_rules(self, tmp_path: Path):
         _write_file(tmp_path, "example.py", CODE_WITH_VIOLATION)

@@ -57,6 +57,7 @@ print_in_async = "smart_linter.rules.print_in_async:PrintInAsyncRule"
 unauthenticated_mutation = "smart_linter.rules.unauthenticated_mutation:UnauthenticatedMutationRule"
 missing_response_model = "smart_linter.rules.missing_response_model:MissingResponseModelRule"
 lost_exception_context = "smart_linter.rules.lost_exception_context:LostExceptionContextRule"
+async_no_await = "smart_linter.rules.async_no_await:AsyncNoAwaitRule"
 
 [tool.setuptools.packages.find]
 where = ["src"]

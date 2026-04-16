@@ -72,7 +72,8 @@ class TestCheckFilesJsonFormat:
         data = json.loads(result)
         assert isinstance(data, list)
         assert len(data) >= 1
-        assert data[0]["code"] == "ASYNC001"
+        codes = {v["code"] for v in data}
+        assert "ASYNC001" in codes
 
     def test_json_format_explicit(self, tmp_path: Path):
         f = _write_file(tmp_path, "example.py", CODE_WITH_VIOLATION)
@@ -131,18 +132,21 @@ class TestCheckFilesFixesFormat:
         assert "rule" in entry
         assert "severity" in entry
         assert "message" in entry
-        assert entry["rule"] == "ASYNC001"
+        rules = {e["rule"] for e in data}
+        assert "ASYNC001" in rules
 
     def test_fixes_format_includes_fix_fields(self, tmp_path: Path):
         f = _write_file(tmp_path, "example.py", CODE_WITH_VIOLATION)
         result = check_files(paths=[str(f)], output_format="fixes")
         data = json.loads(result)
-        entry = data[0]
+        # Find the ASYNC001 entry (might not be first)
+        async001 = next((e for e in data if e["rule"] == "ASYNC001"), None)
+        assert async001 is not None, f"ASYNC001 not found in {[e['rule'] for e in data]}"
         # ASYNC001 violations have fix suggestions
-        assert "fix_title" in entry
-        assert "fix_replacement" in entry
-        assert "fix_explanation" in entry
-        assert "Replace" in entry["fix_title"]
+        assert "fix_title" in async001
+        assert "fix_replacement" in async001
+        assert "fix_explanation" in async001
+        assert "Replace" in async001["fix_title"]
 
     def test_fixes_format_violation_without_fix(self, tmp_path: Path):
         """Violations without a fix should not include fix_title etc."""
