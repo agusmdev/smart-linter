@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "smart-linter"
-version = "0.1.0"
+version = "0.2.0"
 description = "Pluggable Python linter with heuristic rules, ruff-compatible output, and AI harness integration"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -12,7 +12,7 @@ license = {text = "MIT"}
 authors = [
     {name = "Smart Linter Contributors"},
 ]
-keywords = ["linter", "static-analysis", "fastapi", "async", "ai", "ruff"]
+keywords = ["linter", "static-analysis", "fastapi", "async", "ai", "ruff", "security", "performance"]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Environment :: Console",
@@ -32,6 +32,7 @@ dependencies = [
 dev = [
     "pytest>=7.0",
     "pytest-cov>=4.0",
+    "ruff>=0.8.0",
 ]
 mcp = [
     "mcp>=1.0",
@@ -42,6 +43,16 @@ smart-linter = "smart_linter.cli:main"
 
 [project.entry-points."smart_linter.rules"]
 async_sync = "smart_linter.rules.async_sync:AsyncSyncRule"
+silent_exception = "smart_linter.rules.silent_exception:SilentExceptionRule"
+string_concat_loop = "smart_linter.rules.string_concat_loop:StringConcatLoopRule"
+unnecessary_list_comp = "smart_linter.rules.unnecessary_list_comp:UnnecessaryListCompRule"
+sql_injection = "smart_linter.rules.sql_injection:SqlInjectionRule"
+hardcoded_secrets = "smart_linter.rules.hardcoded_secrets:HardcodedSecretsRule"
+mutable_class_attr = "smart_linter.rules.mutable_class_attr:MutableClassAttrRule"
+unclosed_resource = "smart_linter.rules.unclosed_resource:UnclosedResourceRule"
+dangerous_deserialization = "smart_linter.rules.dangerous_deserialization:DangerousDeserializationRule"
+always_true_condition = "smart_linter.rules.always_true_condition:AlwaysTrueConditionRule"
+late_binding_closure = "smart_linter.rules.late_binding_closure:LateBindingClosureRule"
 
 [tool.setuptools.packages.find]
 where = ["src"]
@@ -59,3 +70,28 @@ where = ["src"]
 [tool.pytest.ini_options]
 pythonpath = ["src"]
 testpaths = ["tests"]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 120
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "N", "UP", "ANN", "B", "A", "SIM", "RUF"]
+ignore = ["ANN101", "ANN102", "ANN401"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["ANN", "S101", "PLR2004", "ARG"]
+
+[tool.coverage.run]
+source = ["smart_linter"]
+omit = ["tests/*", "smart_linter/mcp_server.py"]
+
+[tool.coverage.report]
+fail_under = 100
+show_missing = true
+
+[dependency-groups]
+dev = [
+    "ruff>=0.15.10",
+    "ty>=0.0.31",
+]

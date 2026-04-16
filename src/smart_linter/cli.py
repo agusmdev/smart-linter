@@ -14,7 +14,7 @@ from smart_linter.output import format_json, format_sarif, format_text
 
 @click.group()
 @click.version_option(version=__version__, prog_name="smart-linter")
-def main():
+def main() -> None:
     pass
 
 
@@ -35,10 +35,26 @@ def main():
     is_flag=True,
     help="Print fix suggestions in AI-parseable format",
 )
+@click.option("--diff", "show_diff", is_flag=True, help="Show what would change (for AI agents)")
+@click.option("--no-cache", is_flag=True, help="Disable result caching")
 @click.option(
-    "--diff", "show_diff", is_flag=True, help="Show what would change (for AI agents)"
+    "--workers",
+    type=int,
+    default=0,
+    show_default=True,
+    help="Number of parallel workers (0 = auto)",
 )
-def check(paths, output_format, config_file, select, ignore, apply_fix, show_diff):
+def check(
+    paths: tuple[str, ...],
+    output_format: str,
+    config_file: str | None,
+    select: tuple[str, ...],
+    ignore: tuple[str, ...],
+    apply_fix: bool,
+    show_diff: bool,
+    no_cache: bool,
+    workers: int,
+) -> None:
     target_paths = [Path(p) for p in paths]
 
     config = Config.from_pyproject()
@@ -51,6 +67,11 @@ def check(paths, output_format, config_file, select, ignore, apply_fix, show_dif
         config.select = list(select)
     if ignore:
         config.ignore = list(ignore)
+
+    if no_cache:
+        config.no_cache = True
+    if workers:
+        config.workers = workers
 
     violations = run(target_paths, config)
 
@@ -67,7 +88,7 @@ def check(paths, output_format, config_file, select, ignore, apply_fix, show_dif
         raise SystemExit(1)
 
 
-def _print_fixes(violations, show_diff: bool = False):
+def _print_fixes(violations: list, show_diff: bool = False) -> None:
     import json
 
     fixes = []
@@ -97,7 +118,7 @@ def _print_fixes(violations, show_diff: bool = False):
 
 @main.command()
 @click.argument("paths", nargs=-1, required=True, type=click.Path(exists=True))
-def list_rules(paths):
+def list_rules(paths: tuple[str, ...]) -> None:
     from smart_linter.registry import get_all_rules
 
     rules = get_all_rules()

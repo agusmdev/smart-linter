@@ -10,8 +10,7 @@ try:
     from mcp.server.fastmcp import FastMCP
 except ImportError:
     print(
-        "smart-linter MCP server requires the 'mcp' package. "
-        "Install with: pip install smart-linter[mcp]",
+        "smart-linter MCP server requires the 'mcp' package. Install with: pip install smart-linter[mcp]",
         file=sys.stderr,
     )
     sys.exit(1)
@@ -29,18 +28,20 @@ def check_files(
     paths: list[str],
     select: list[str] | None = None,
     ignore: list[str] | None = None,
-    format: str = "json",
+    output_format: str = "json",
 ) -> str:
     """Lint Python files for heuristic code quality issues.
 
-    Detects sync blocking calls in async FastAPI endpoints, and other
-    best-practice violations that ruff cannot catch.
+    Detects issues that ruff cannot catch: sync calls in async endpoints,
+    silent exception swallowing, hardcoded secrets, SQL injection patterns,
+    resource leaks, performance anti-patterns, and more.
 
     Args:
         paths: List of file or directory paths to check
         select: List of rule IDs to enable (default: all rules)
         ignore: List of rule IDs to ignore
-        format: Output format - "json" (structured), "text" (human-readable), or "fixes" (AI-parseable fix suggestions)
+        output_format: Output format - "json" (structured),
+            "text" (human-readable), or "fixes" (AI-parseable)
 
     Returns:
         Linting results with violations and fix suggestions
@@ -54,7 +55,7 @@ def check_files(
     target_paths = [Path(p) for p in paths]
     violations = run(target_paths, config)
 
-    if format == "fixes":
+    if output_format == "fixes":
         fixes = []
         for v in violations:
             entry = {
@@ -67,12 +68,14 @@ def check_files(
             }
             if v.fix:
                 entry["fix_title"] = v.fix.title
-                entry["fix_replacement"] = v.fix.replacement
-                entry["fix_explanation"] = v.fix.explanation
+                if v.fix.replacement is not None:
+                    entry["fix_replacement"] = v.fix.replacement
+                if v.fix.explanation is not None:
+                    entry["fix_explanation"] = v.fix.explanation
             fixes.append(entry)
         return json.dumps(fixes, indent=2)
 
-    if format == "text":
+    if output_format == "text":
         return format_text(violations)
 
     return format_json(violations)
@@ -109,55 +112,54 @@ def explain_rule(rule_id: str) -> str:
     Returns:
         Detailed rule explanation with detection patterns and fix suggestions
     """
-    from smart_linter.rules.async_sync import (
-        BLOCKING_CALLS,
-        PATHLIB_BLOCKING_METHODS,
-    )
+    rules = get_all_rules()
+    if rule_id not in rules:
+        return json.dumps({"error": f"Unknown rule: {rule_id}"})
+
+    cls = rules[rule_id]
+    result = {
+        "id": rule_id,
+        "description": cls.description,
+        "severity": cls.severity.value,
+        "tags": list(cls.tags),
+    }
 
     if rule_id == "ASYNC001":
-        patterns = []
-        for call_name, (replacement, example) in BLOCKING_CALLS.items():
-            patterns.append(f"- `{call_name}()` → Use `{replacement}`: `{example}`")
-
-        pathlib_methods = ", ".join(
-            f"`.{m}()`" for m in sorted(PATHLIB_BLOCKING_METHODS)
+        from smart_linter.rules.async_sync import (
+            BLOCKING_CALLS,
+            PATHLIB_BLOCKING_METHODS,
         )
 
-        return json.dumps(
+        patterns = []
+        for call_name, (replacement, example) in BLOCKING_CALLS.items():
+            patterns.append(f"`{call_name}()` → Use `{replacement}`: `{example}`")
+
+        pathlib_methods = ", ".join(f"`.{m}()`" for m in sorted(PATHLIB_BLOCKING_METHODS))
+
+        result.update(
             {
-                "id": "ASYNC001",
                 "title": "Sync blocking call in async FastAPI endpoint",
-                "description": "Detects synchronous blocking calls inside `async def` functions decorated with FastAPI route decorators (@app.get, @router.post, etc.). Blocking calls stall the event loop and degrade concurrency.",
                 "safe_wrappers": [
                     "asyncio.to_thread(func, ...)",
                     "run_in_threadpool(func, ...)",
                     "loop.run_in_executor(None, func, ...)",
                     "anyio.to_thread.run_sync(func, ...)",
                 ],
-                "detection_patterns": [p.lstrip("- ") for p in patterns],
+                "detection_patterns": patterns,
                 "pathlib_methods": f"Also detects pathlib methods: {pathlib_methods}",
-                "false_positive_prevention": "Does NOT flag: sync def endpoints, non-decorated async functions, calls wrapped in safe wrappers (asyncio.to_thread, run_in_threadpool), awaited calls.",
-            },
-            indent=2,
+                "false_positive_prevention": (
+                    "Does NOT flag: sync def endpoints, "
+                    "non-decorated async functions, calls wrapped in safe "
+                    "wrappers (asyncio.to_thread, run_in_threadpool), "
+                    "awaited calls."
+                ),
+            }
         )
 
-    rules = get_all_rules()
-    if rule_id in rules:
-        cls = rules[rule_id]
-        return json.dumps(
-            {
-                "id": rule_id,
-                "description": cls.description,
-                "severity": cls.severity.value,
-                "tags": list(cls.tags),
-            },
-            indent=2,
-        )
-
-    return json.dumps({"error": f"Unknown rule: {rule_id}"})
+    return json.dumps(result, indent=2)
 
 
-def main():
+def main() -> None:
     mcp.run(transport="stdio")
 
 

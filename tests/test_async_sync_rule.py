@@ -409,10 +409,7 @@ async def get_x():
 """
     violations = _check_code(code)
     assert len(violations) == 1
-    assert (
-        "transitive" in violations[0].message.lower()
-        or "_helper" in violations[0].message
-    )
+    assert "transitive" in violations[0].message.lower() or "_helper" in violations[0].message
     assert "requests.get" in violations[0].message
 
 
@@ -472,9 +469,7 @@ async def get_x(db=Depends(get_db)):
 """
     violations = _check_code(code)
     assert len(violations) == 1
-    assert (
-        "Depends(get_db)" in violations[0].message or "get_db" in violations[0].message
-    )
+    assert "Depends(get_db)" in violations[0].message or "get_db" in violations[0].message
 
 
 def test_recursive_call_no_infinite_loop():
@@ -550,3 +545,204 @@ async def get_x():
     assert len(violations) == 1
     assert violations[0].fix is not None
     assert "asyncio.to_thread(_helper" in violations[0].fix.replacement
+
+
+def test_attribute_decorator_without_call():
+    code = """
+import requests
+from fastapi import FastAPI
+app = FastAPI()
+
+@app.get
+async def get_data():
+    requests.get("https://api.example.com")
+    return {}
+"""
+    violations = _check_code(code)
+    assert len(violations) == 1
+    assert "requests.get" in violations[0].message
+
+
+def test_name_decorator_not_route():
+    code = """
+import requests
+from fastapi import FastAPI
+app = FastAPI()
+
+my_decorator = lambda f: f
+
+@my_decorator
+@app.get("/data")
+async def get_data():
+    requests.get("https://api.example.com")
+    return {}
+"""
+    violations = _check_code(code)
+    assert len(violations) == 1
+
+
+def test_decorator_call_with_name_func():
+    code = """
+import requests
+from fastapi import FastAPI
+app = FastAPI()
+
+@some_decorator()
+@app.get("/data")
+async def get_data():
+    requests.get("https://api.example.com")
+    return {}
+"""
+    violations = _check_code(code)
+    assert len(violations) == 1
+
+
+def test_safe_wrapper_via_ensure_future():
+    code = """
+import asyncio
+import requests
+from fastapi import FastAPI
+app = FastAPI()
+
+@app.get("/safe")
+async def safe():
+    result = asyncio.ensure_future(some_coroutine())
+    return {}
+"""
+    violations = _check_code(code)
+    assert len(violations) == 0
+
+
+def test_safe_wrapper_via_attribute_match():
+    code = """
+import requests
+from fastapi import FastAPI
+app = FastAPI()
+
+@app.get("/safe")
+async def safe():
+    result = await loop.run_in_executor(None, requests.get, "url")
+    return {}
+"""
+    violations = _check_code(code)
+    assert len(violations) == 0
+
+
+def test_async_with_blocking_still_flagged():
+    code = """
+from fastapi import FastAPI
+app = FastAPI()
+
+@app.get("/file")
+async def read_file():
+    async with open("data.txt") as f:
+        return f.read()
+"""
+    violations = _check_code(code)
+    assert len(violations) == 1
+
+
+def test_open_wrapped_in_anyio_open_file():
+    code = """
+from fastapi import FastAPI
+app = FastAPI()
+
+@app.get("/file")
+async def read_file():
+    await anyio.open_file(open("data.txt"))
+    return {}
+"""
+    violations = _check_code(code)
+    bare_open = [v for v in violations if "open" in v.message and "anyio" not in v.message]
+    assert len(bare_open) == 0
+
+
+def test_open_wrapped_in_aiofiles_open():
+    code = """
+from fastapi import FastAPI
+app = FastAPI()
+
+@app.get("/file")
+async def read_file():
+    await aiofiles.open(open("data.txt"))
+    return {}
+"""
+    violations = _check_code(code)
+    bare_open = [v for v in violations if "open" in v.message and "aiofiles.open" not in v.message]
+    assert len(bare_open) == 1
+
+
+def test_pathlib_path_class_method():
+    code = """
+import pathlib
+from fastapi import FastAPI
+app = FastAPI()
+
+@app.get("/file")
+async def read_file():
+    content = pathlib.Path.read_text("data.txt")
+    return {"content": content}
+"""
+    violations = _check_code(code)
+    assert len(violations) == 1
+    assert "Path(...).read_text" in violations[0].message
+
+
+def test_depth_limit_transitive():
+    code = """
+import requests
+from fastapi import FastAPI
+app = FastAPI()
+
+def f1():
+    requests.get("https://api.example.com")
+    f2()
+def f2(): f3()
+def f3(): f4()
+def f4(): f5()
+def f5(): f6()
+def f6(): requests.get("https://other.com")
+
+@app.get("/x")
+async def get_x():
+    f1()
+"""
+    violations = _check_code(code)
+    assert len(violations) >= 1
+    assert any("requests.get" in v.message for v in violations)
+
+
+def test_nested_function_def_skipped():
+    code = """
+import requests
+from fastapi import FastAPI
+app = FastAPI()
+
+@app.get("/x")
+async def get_x():
+    def nested():
+        pass
+    requests.get("https://api.example.com")
+    return {}
+"""
+    violations = _check_code(code)
+    assert len(violations) == 1
+    assert "requests.get" in violations[0].message
+
+
+def test_should_check_with_fastapi_string():
+    assert AsyncSyncRule.should_check("async def foo():\n    FastAPI()") is True
+
+
+def test_depends_nonexistent_function():
+    code = """
+import requests
+from fastapi import FastAPI, Depends
+app = FastAPI()
+
+@app.get("/x")
+async def get_x(db=Depends(nonexistent_func)):
+    return {}
+"""
+    violations = _check_code(code)
+    assert len(violations) == 0

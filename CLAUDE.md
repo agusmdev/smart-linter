@@ -30,7 +30,16 @@ smart-linter check src/ --fix
 smart-linter check src/ --diff
 
 # Check only specific rules
-smart-linter check src/ --select ASYNC001
+smart-linter check src/ --select ASYNC001 ERR001 SEC001
+
+# Ignore specific rules
+smart-linter check src/ --ignore PERF001 PERF002
+
+# Disable caching (force fresh run)
+smart-linter check src/ --no-cache
+
+# Control parallel workers (0 = auto, based on CPU count)
+smart-linter check src/ --workers 4
 
 # List available rules
 smart-linter list-rules .
@@ -49,7 +58,7 @@ smart-linter check src/ --format json >> lint-results.json
 Add to `ruff.toml` so `# noqa: ASYNC001` comments work:
 ```toml
 [lint]
-external = ["ASYNC001"]
+external = ["ASYNC001", "ERR001", "PERF001", "PERF002", "SEC001", "SEC002", "SEC003", "RES001", "MAIN001", "MAIN002", "LOGIC001"]
 ```
 
 ## Pre-commit Hook
@@ -125,9 +134,19 @@ When connected, AI agents can directly:
 
 ## Available Rules
 
-| Rule ID | Description |
-|---------|-------------|
-| ASYNC001 | Detects sync blocking calls in async FastAPI endpoints |
+| Rule ID | Description | Severity |
+|---------|-------------|----------|
+| ASYNC001 | Detects sync blocking calls in async FastAPI endpoints | WARNING |
+| ERR001 | Detects exception handlers that silently swallow errors | WARNING |
+| PERF001 | String concatenation using += inside loop (O(n²)) | INFO |
+| PERF002 | Unnecessary list comprehension (use generator expression) | INFO |
+| SEC001 | SQL injection via string formatting in queries | ERROR |
+| SEC002 | Hardcoded secrets/credentials in source code | ERROR |
+| SEC003 | Dangerous deserialization (pickle, yaml.load without safe Loader) | ERROR |
+| RES001 | Resources opened without context manager (resource leak risk) | WARNING |
+| MAIN001 | Mutable class attributes shared across all instances | WARNING |
+| MAIN002 | Late binding closure in loops (captures loop variable by reference) | WARNING |
+| LOGIC001 | Always-true or always-false conditions (logic errors) | WARNING |
 
 ## Writing Custom Rules
 
@@ -141,10 +160,13 @@ class MyRule(Rule):
     description: ClassVar[str] = "Description of what this rule detects"
     severity: ClassVar[Severity] = Severity.WARNING
 
+    @classmethod
+    def should_check(cls, source: str) -> bool:
+        return "pattern" in source
+
     def check(self, tree, filename: str = "") -> list[Violation]:
         violations = []
         for node in ast.walk(tree):
-            # Your AST analysis here
             pass
         return violations
 ```

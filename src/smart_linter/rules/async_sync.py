@@ -5,6 +5,12 @@ from __future__ import annotations
 import ast
 from typing import ClassVar
 
+from smart_linter.ast_utils import (
+    build_parent_map as _build_parent_map,
+)
+from smart_linter.ast_utils import (
+    get_qualified_name as _get_qualified_name,
+)
 from smart_linter.models import (
     FixSuggestion,
     Location,
@@ -80,18 +86,20 @@ BLOCKING_CALLS: dict[str, tuple[str, str]] = {
     ),
 }
 
-BLOCKING_ATTRS: dict[str, set[str]] = {
+BLOCKING_ATTRS: dict[str, frozenset[str]] = {
     "requests": HTTP_METHODS | {"request"},
     "httpx": HTTP_METHODS | {"request"},
-    "subprocess": {
-        "run",
-        "call",
-        "check_output",
-        "check_call",
-        "Popen",
-        "getoutput",
-        "getstatusoutput",
-    },
+    "subprocess": frozenset(
+        {
+            "run",
+            "call",
+            "check_output",
+            "check_call",
+            "Popen",
+            "getoutput",
+            "getstatusoutput",
+        }
+    ),
 }
 
 BLOCKING_BARE_CALLS = frozenset({"input", "open"})
@@ -138,17 +146,7 @@ SAFE_WRAPPER_PREFIXES = (
     "run_in_threadpool",
 )
 
-SAFE_WRAPPER_ATTRS = frozenset(
-    {"to_thread", "run_in_executor", "run_sync", "run_in_threadpool", "open_file"}
-)
-
-
-def _build_parent_map(tree: ast.AST) -> dict[ast.AST, ast.AST]:
-    parent_map: dict[ast.AST, ast.AST] = {}
-    for parent in ast.walk(tree):
-        for child in ast.iter_child_nodes(parent):
-            parent_map[child] = parent
-    return parent_map
+SAFE_WRAPPER_ATTRS = frozenset({"to_thread", "run_in_executor", "run_sync", "run_in_threadpool", "open_file"})
 
 
 def _is_fastapi_route_decorator(decorator: ast.expr) -> bool:
@@ -165,17 +163,13 @@ def _is_fastapi_route_decorator(decorator: ast.expr) -> bool:
     return False
 
 
-def _is_in_safe_wrapper(
-    call_node: ast.Call, parent_map: dict[ast.AST, ast.AST]
-) -> bool:
+def _is_in_safe_wrapper(call_node: ast.Call, parent_map: dict[ast.AST, ast.AST]) -> bool:
     parent = parent_map.get(call_node)
     while parent is not None:
         if isinstance(parent, ast.Call):
             func = parent.func
             func_name = _get_qualified_name(func)
-            if func_name and any(
-                func_name.startswith(p) for p in SAFE_WRAPPER_PREFIXES
-            ):
+            if func_name and any(func_name.startswith(p) for p in SAFE_WRAPPER_PREFIXES):
                 return True
             if isinstance(func, ast.Attribute) and func.attr in SAFE_WRAPPER_ATTRS:
                 return True
@@ -183,28 +177,14 @@ def _is_in_safe_wrapper(
     return False
 
 
-def _get_qualified_name(node: ast.expr) -> str | None:
-    if isinstance(node, ast.Name):
-        return node.id
-    if isinstance(node, ast.Attribute):
-        value = _get_qualified_name(node.value)
-        if value:
-            return f"{value}.{node.attr}"
-    return None
-
-
 def _is_awaited(node: ast.AST, parent_map: dict[ast.AST, ast.AST]) -> bool:
     parent = parent_map.get(node)
     if isinstance(parent, ast.Await):
         return True
-    if isinstance(parent, (ast.AsyncWith, ast.AsyncFor)):
-        return True
-    return False
+    return bool(isinstance(parent, (ast.AsyncWith, ast.AsyncFor)))
 
 
-def _is_wrapped_in_anyio_open_file(
-    call: ast.Call, parent_map: dict[ast.AST, ast.AST]
-) -> bool:
+def _is_wrapped_in_anyio_open_file(call: ast.Call, parent_map: dict[ast.AST, ast.AST]) -> bool:
     parent = parent_map.get(call)
     while parent is not None:
         if isinstance(parent, ast.Call):
@@ -217,16 +197,13 @@ def _is_wrapped_in_anyio_open_file(
     return False
 
 
-def _get_blocking_call_name(
-    call: ast.Call, parent_map: dict[ast.AST, ast.AST]
-) -> str | None:
+def _get_blocking_call_name(call: ast.Call, parent_map: dict[ast.AST, ast.AST]) -> str | None:
     if isinstance(call.func, ast.Attribute):
         value_name = _get_qualified_name(call.func.value)
         attr = call.func.attr
 
-        if value_name and value_name in BLOCKING_ATTRS:
-            if attr in BLOCKING_ATTRS[value_name]:
-                return f"{value_name}.{attr}"
+        if value_name and value_name in BLOCKING_ATTRS and attr in BLOCKING_ATTRS[value_name]:
+            return f"{value_name}.{attr}"
 
         if value_name == "os.path" and attr in OS_PATH_FUNCS:
             return f"os.path.{attr}"
@@ -244,9 +221,8 @@ def _get_blocking_call_name(
                 return f"Path(...).{attr}"
 
     if isinstance(call.func, ast.Name):
-        if call.func.id == "open":
-            if not _is_wrapped_in_anyio_open_file(call, parent_map):
-                return "open"
+        if call.func.id == "open" and not _is_wrapped_in_anyio_open_file(call, parent_map):
+            return "open"
 
         if call.func.id in BLOCKING_BARE_CALLS:
             return call.func.id
@@ -312,10 +288,7 @@ def _find_transitive_blocking(
     results: list[tuple[ast.Call, str, list[str]]] = []
 
     for node in ast.walk(func_body):
-        if (
-            isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
-            and node is not func_body
-        ):
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node is not func_body:
             continue
 
         if not isinstance(node, ast.Call):
@@ -341,22 +314,30 @@ def _find_transitive_blocking(
             depth + 1,
         )
         for blocking_node, blocking_name, chain in deeper:
-            results.append((blocking_node, blocking_name, [target.name] + chain))
+            results.append((blocking_node, blocking_name, [target.name, *chain]))
 
     return results
 
 
 class AsyncSyncRule(Rule):
     id: ClassVar[str] = "ASYNC001"
-    description: ClassVar[str] = (
-        "Sync blocking call detected inside async FastAPI endpoint"
-    )
+    description: ClassVar[str] = "Sync blocking call detected inside async FastAPI endpoint"
     severity: ClassVar[Severity] = Severity.WARNING
     tags: ClassVar[tuple[str, ...]] = ("async", "fastapi", "performance")
 
-    def check(self, tree, filename: str = "") -> list[Violation]:
-        parent_map = _build_parent_map(tree)
-        func_index = _build_function_index(tree)
+    @classmethod
+    def should_check(cls, source: str) -> bool:
+        return "async def" in source and (
+            "@app." in source or "@router." in source or "FastAPI" in source or "APIRouter" in source
+        )
+
+    def check(self, tree: ast.AST, filename: str = "") -> list[Violation]:
+        parent_map = getattr(self, "_parent_map", None)
+        func_index = getattr(self, "_func_index", None)
+        if parent_map is None:
+            parent_map = _build_parent_map(tree)
+        if func_index is None:
+            func_index = _build_function_index(tree)
         violations: list[Violation] = []
         seen: set[tuple[str, int, str]] = set()
 
@@ -397,7 +378,7 @@ class AsyncSyncRule(Rule):
         extra_entry: ast.FunctionDef | ast.AsyncFunctionDef | None = None,
         extra_label: str = "",
     ) -> None:
-        bodies = [endpoint]
+        bodies: list[ast.FunctionDef | ast.AsyncFunctionDef] = [endpoint]
         if extra_entry is not None:
             bodies.append(extra_entry)
 
@@ -415,12 +396,13 @@ class AsyncSyncRule(Rule):
                 seen.add(key)
 
                 if is_depends and not chain:
+                    assert extra_entry is not None
                     chain = [extra_entry.name]
 
                 is_transitive = len(chain) > 0
                 if is_transitive:
                     entry_func = chain[0]
-                    call_path = " → ".join(chain + [blocking_name])
+                    call_path = " → ".join([*chain, blocking_name])
                     source = extra_label or endpoint.name
                     message = (
                         f"Transitive blocking call in async endpoint `{source}`: "
@@ -436,10 +418,7 @@ class AsyncSyncRule(Rule):
                         ),
                     )
                 else:
-                    message = (
-                        f"Blocking sync call `{blocking_name}()` in async "
-                        f"FastAPI endpoint `{endpoint.name}`"
-                    )
+                    message = f"Blocking sync call `{blocking_name}()` in async FastAPI endpoint `{endpoint.name}`"
                     fix = self._build_fix(blocking_name)
 
                 violations.append(
@@ -452,10 +431,7 @@ class AsyncSyncRule(Rule):
                         ),
                         end_location=Location(
                             row=blocking_node.end_lineno or blocking_node.lineno,
-                            column=(
-                                blocking_node.end_col_offset or blocking_node.col_offset
-                            )
-                            + 1,
+                            column=(blocking_node.end_col_offset or blocking_node.col_offset) + 1,
                         ),
                         severity=self.severity,
                         fix=fix,

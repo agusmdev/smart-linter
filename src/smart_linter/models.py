@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
+import ast
 import enum
-from dataclasses import dataclass, field
-from typing import AbstractSet, ClassVar
+from dataclasses import dataclass
+from typing import ClassVar
 
 
 class Severity(enum.Enum):
@@ -13,26 +14,26 @@ class Severity(enum.Enum):
     INFO = "info"
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class Location:
     row: int
     column: int
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class Range:
     start: Location
     end: Location
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class FixSuggestion:
     title: str
     replacement: str | None = None
     explanation: str | None = None
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class Violation:
     rule_id: str
     message: str
@@ -50,9 +51,7 @@ class Violation:
             "severity": self.severity.value,
             "location": {"row": self.location.row, "column": self.location.column},
             "end_location": (
-                {"row": self.end_location.row, "column": self.end_location.column}
-                if self.end_location
-                else None
+                {"row": self.end_location.row, "column": self.end_location.column} if self.end_location else None
             ),
             "filename": self.filename,
             "fix": (
@@ -98,5 +97,14 @@ class Rule:
     severity: ClassVar[Severity] = Severity.WARNING
     tags: ClassVar[tuple[str, ...]] = ()
 
-    def check(self, tree, filename: str) -> list[Violation]:
+    @classmethod
+    def should_check(cls, source: str) -> bool:
+        """Quick string scan to determine if this rule should check the file.
+
+        Override in subclasses for early-exit optimization.
+        Return False to skip AST parsing and rule dispatch for this file.
+        """
+        return True
+
+    def check(self, tree: ast.AST, filename: str = "") -> list[Violation]:
         raise NotImplementedError

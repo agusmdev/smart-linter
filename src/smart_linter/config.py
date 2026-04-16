@@ -16,6 +16,7 @@ DEFAULT_EXCLUDE = [
     "dist",
     ".eggs",
     "*.egg-info",
+    ".smart_linter_cache",
 ]
 
 
@@ -26,6 +27,8 @@ class Config:
     custom_rules: list[str] = field(default_factory=list)
     min_severity: str = "info"
     exclude: list[str] = field(default_factory=lambda: list(DEFAULT_EXCLUDE))
+    no_cache: bool = False
+    workers: int = 0
 
     @classmethod
     def from_pyproject(cls, project_root: Path | None = None) -> Config:
@@ -50,4 +53,6 @@ class Config:
             custom_rules=tool_config.get("custom-rules", []),
             min_severity=tool_config.get("min-severity", "info"),
             exclude=tool_config.get("exclude", list(DEFAULT_EXCLUDE)),
+            no_cache=tool_config.get("no-cache", False),
+            workers=tool_config.get("workers", 0),
         )

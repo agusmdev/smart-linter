@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import importlib
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -13,8 +14,35 @@ _REGISTERED_RULES: dict[str, type[Rule]] = {}
 
 
 def register(cls: type[Rule]) -> type[Rule]:
+    """Decorator to register a rule class for auto-discovery."""
     _REGISTERED_RULES[cls.id] = cls
     return cls
+
+
+def _discover_builtin_rules() -> dict[str, type[Rule]]:
+    from smart_linter.models import Rule
+
+    rules: dict[str, type[Rule]] = {}
+    rules_dir = Path(__file__).parent / "rules"
+    for py_file in sorted(rules_dir.glob("*.py")):
+        if py_file.name.startswith("_"):
+            continue
+        module_name = f"smart_linter.rules.{py_file.stem}"
+        try:
+            module = importlib.import_module(module_name)
+            for attr_name in dir(module):
+                attr = getattr(module, attr_name)
+                if (
+                    isinstance(attr, type)
+                    and issubclass(attr, Rule)
+                    and attr is not Rule
+                    and hasattr(attr, "id")
+                    and hasattr(attr, "check")
+                ):
+                    rules[attr.id] = attr
+        except Exception:
+            continue
+    return rules
 
 
 def _discover_entry_points() -> dict[str, type[Rule]]:
@@ -67,10 +95,8 @@ def get_all_rules(
     select: list[str] | None = None,
     ignore: list[str] | None = None,
 ) -> dict[str, type[Rule]]:
-    from smart_linter.rules.async_sync import AsyncSyncRule
-
     all_rules: dict[str, type[Rule]] = {}
-    all_rules[AsyncSyncRule.id] = AsyncSyncRule
+    all_rules.update(_discover_builtin_rules())
     all_rules.update(_REGISTERED_RULES)
     all_rules.update(_discover_entry_points())
 
