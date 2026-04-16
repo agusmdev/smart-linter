@@ -53,6 +53,7 @@ unclosed_resource = "smart_linter.rules.unclosed_resource:UnclosedResourceRule"
 dangerous_deserialization = "smart_linter.rules.dangerous_deserialization:DangerousDeserializationRule"
 always_true_condition = "smart_linter.rules.always_true_condition:AlwaysTrueConditionRule"
 late_binding_closure = "smart_linter.rules.late_binding_closure:LateBindingClosureRule"
+print_in_async = "smart_linter.rules.print_in_async:PrintInAsyncRule"
 
 [tool.setuptools.packages.find]
 where = ["src"]
