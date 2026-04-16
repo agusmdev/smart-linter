@@ -125,7 +125,9 @@ class HardcodedSecretsRule(Rule):
         return any(p in lower for p in SECRET_PATTERNS)
 
     def check(self, tree: ast.AST, filename: str = "") -> list[Violation]:
-        parent_map = _build_parent_map(tree)
+        from smart_linter.ast_utils import build_parent_map
+
+        parent_map = getattr(self, "_parent_map", None) or build_parent_map(tree)
         violations: list[Violation] = []
 
         for node in ast.walk(tree):

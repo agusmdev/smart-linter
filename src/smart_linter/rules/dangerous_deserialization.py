@@ -127,10 +127,12 @@ class DangerousDeserializationRule(Rule):
     def check(self, tree: ast.AST, filename: str = "") -> list[Violation]:
         violations: list[Violation] = []
 
-        for node in ast.walk(tree):
-            if not isinstance(node, ast.Call):
-                continue
+        node_index = getattr(self, "_node_index", None)
+        call_nodes = node_index.get(ast.Call, []) if node_index else []
+        if not call_nodes:
+            call_nodes = (n for n in ast.walk(tree) if isinstance(n, ast.Call))
 
+        for node in call_nodes:
             module_name, func_name = _get_call_info(node)
             if module_name is None or func_name is None:
                 continue

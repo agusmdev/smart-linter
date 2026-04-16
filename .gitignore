@@ -23,3 +23,7 @@ htmlcov/
 .omc/
 .sisyphus/
 .opencode/
+
+# smart-linter cache
+.smart_linter_cache/
+.omp/

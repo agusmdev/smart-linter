@@ -340,10 +340,12 @@ class AsyncSyncRule(Rule):
         violations: list[Violation] = []
         seen: set[tuple[str, int, str]] = set()
 
-        for node in ast.walk(tree):
-            if not isinstance(node, ast.AsyncFunctionDef):
-                continue
+        node_index = getattr(self, "_node_index", None)
+        async_funcs = node_index.get(ast.AsyncFunctionDef, []) if node_index else []
+        if not async_funcs:
+            async_funcs = (n for n in ast.walk(tree) if isinstance(n, ast.AsyncFunctionDef))
 
+        for node in async_funcs:
             if not any(_is_fastapi_route_decorator(d) for d in node.decorator_list):
                 continue
 

@@ -157,11 +157,19 @@ class SilentExceptionRule(Rule):
     severity: ClassVar[Severity] = Severity.WARNING
     tags: ClassVar[tuple[str, ...]] = ("error-handling", "reliability", "bug")
 
+    @classmethod
+    def should_check(cls, source: str) -> bool:
+        return "except" in source
+
     def check(self, tree: ast.AST, filename: str = "") -> list[Violation]:
         violations: list[Violation] = []
-        for node in ast.walk(tree):
-            if not isinstance(node, ast.Try):
-                continue
+        node_index = getattr(self, "_node_index", None)
+        try_nodes = node_index.get(ast.Try, []) if node_index else []
+        if not try_nodes:
+            for node in ast.walk(tree):
+                if isinstance(node, ast.Try):
+                    try_nodes.append(node)
+        for node in try_nodes:
             for handler in node.handlers:
                 if self._is_silent_handler(handler):
                     violations.append(self._make_violation(handler, filename))

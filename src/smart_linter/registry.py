@@ -11,6 +11,15 @@ if TYPE_CHECKING:
 
 _BUILTIN_RULES: dict[str, type[Rule]] = {}
 _REGISTERED_RULES: dict[str, type[Rule]] = {}
+_builtin_cache: dict[str, type[Rule]] | None = None
+_entry_points_cache: dict[str, type[Rule]] | None = None
+
+
+def _reset_cache() -> None:
+    """Clear rule discovery caches. For testing only."""
+    global _builtin_cache, _entry_points_cache
+    _builtin_cache = None
+    _entry_points_cache = None
 
 
 def register(cls: type[Rule]) -> type[Rule]:
@@ -20,6 +29,10 @@ def register(cls: type[Rule]) -> type[Rule]:
 
 
 def _discover_builtin_rules() -> dict[str, type[Rule]]:
+    global _builtin_cache
+    if _builtin_cache is not None:
+        return dict(_builtin_cache)
+
     from smart_linter.models import Rule
 
     rules: dict[str, type[Rule]] = {}
@@ -42,17 +55,23 @@ def _discover_builtin_rules() -> dict[str, type[Rule]]:
                     rules[attr.id] = attr
         except Exception:
             continue
-    return rules
+    _builtin_cache = rules
+    return dict(rules)
 
 
 def _discover_entry_points() -> dict[str, type[Rule]]:
+    global _entry_points_cache
+    if _entry_points_cache is not None:
+        return dict(_entry_points_cache)
+
     rules: dict[str, type[Rule]] = {}
     try:
         from importlib.metadata import entry_points
 
         eps = entry_points(group="smart_linter.rules")
     except Exception:
-        return rules
+        _entry_points_cache = rules
+        return dict(rules)
 
     for ep in eps:
         try:
@@ -61,7 +80,8 @@ def _discover_entry_points() -> dict[str, type[Rule]]:
                 rules[obj.id] = obj
         except Exception:
             continue
-    return rules
+    _entry_points_cache = rules
+    return dict(rules)
 
 
 def _load_custom_rule(path: str) -> type[Rule] | None:

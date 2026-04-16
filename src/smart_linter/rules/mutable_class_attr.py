@@ -103,10 +103,12 @@ class MutableClassAttrRule(Rule):
     def check(self, tree: ast.AST, filename: str = "") -> list[Violation]:
         violations: list[Violation] = []
 
-        for node in ast.walk(tree):
-            if not isinstance(node, ast.ClassDef):
-                continue
+        node_index = getattr(self, "_node_index", None)
+        class_nodes = node_index.get(ast.ClassDef, []) if node_index else []
+        if not class_nodes:
+            class_nodes = (n for n in ast.walk(tree) if isinstance(n, ast.ClassDef))
 
+        for node in class_nodes:
             if _class_has_slots(node):
                 continue
 
