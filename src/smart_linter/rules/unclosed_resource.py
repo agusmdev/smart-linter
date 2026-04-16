@@ -123,18 +123,29 @@ _SCOPE_BOUNDARIES = (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)
 
 
 def _walk_stmts_shallow(stmts: list[ast.stmt]) -> Iterator[ast.AST]:
+    """Iterate over all nodes in stmts, stopping at scope boundaries."""
+    stack: list[ast.AST] = []
     for stmt in stmts:
         if isinstance(stmt, _SCOPE_BOUNDARIES):
             continue
-        yield from _walk_no_nested_scopes(stmt)
-
-
-def _walk_no_nested_scopes(node: ast.AST) -> Iterator[ast.AST]:
-    yield node
-    for child in ast.iter_child_nodes(node):
-        if isinstance(child, _SCOPE_BOUNDARIES):
-            continue
-        yield from _walk_no_nested_scopes(child)
+        stack.append(stmt)
+        while stack:
+            node = stack.pop()
+            yield node
+            # Add children in reverse order to maintain original order
+            children = []
+            for fn in node._fields:
+                v = getattr(node, fn, None)
+                if v is None:
+                    continue
+                if isinstance(v, ast.AST):
+                    if not isinstance(v, _SCOPE_BOUNDARIES):
+                        children.append(v)
+                elif isinstance(v, list):
+                    for item in v:
+                        if isinstance(item, ast.AST) and not isinstance(item, _SCOPE_BOUNDARIES):
+                            children.append(item)
+            stack.extend(reversed(children))
 
 
 def _var_used_in_with(var: str, stmts: list[ast.stmt]) -> bool:
@@ -241,17 +252,24 @@ class UnclosedResourceRule(Rule):
     def check(self, tree: ast.AST, filename: str = "") -> list[Violation]:
         violations: list[Violation] = []
 
-        # Collect all scope bodies: module-level and every function/method
-        scope_bodies: dict[int, list[ast.stmt]] = {}
-        for node in ast.walk(tree):
-            if isinstance(node, (ast.Module, ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
-                scope_bodies[id(node)] = node.body
+        node_index = getattr(self, "_node_index", None)
+        parent_map_attr = getattr(self, "_parent_map", None)
 
-        # Build parent map for context detection
-        parent_map: dict[ast.AST, ast.AST] = {}
-        for parent in ast.walk(tree):
-            for child in ast.iter_child_nodes(parent):
-                parent_map[child] = parent
+        if node_index:
+            scope_bodies: dict[int, list[ast.stmt]] = {}
+            for t in (ast.Module, ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef):
+                for node in node_index.get(t, []):
+                    scope_bodies[id(node)] = node.body
+            parent_map = parent_map_attr or {}
+        else:
+            scope_bodies = {}
+            for node in ast.walk(tree):
+                if isinstance(node, (ast.Module, ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+                    scope_bodies[id(node)] = node.body
+            parent_map = {}
+            for parent in ast.walk(tree):
+                for child in ast.iter_child_nodes(parent):
+                    parent_map[child] = parent
 
         # Walk all scope bodies and check assignments
         for _scope_id, stmts in scope_bodies.items():

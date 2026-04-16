@@ -441,19 +441,19 @@ class TestViolationSerialization:
 class TestBuildAstAnalysis:
     def test_basic_function(self):
         tree = ast.parse("def foo(): pass\n")
-        parent_map, func_index = _build_ast_analysis(tree)
+        func_index, node_index, parent_map = _build_ast_analysis(tree)
         assert "foo" in func_index
         assert isinstance(func_index["foo"], ast.FunctionDef)
 
     def test_async_function(self):
         tree = ast.parse("async def bar(): pass\n")
-        parent_map, func_index = _build_ast_analysis(tree)
+        func_index, node_index, parent_map = _build_ast_analysis(tree)
         assert "bar" in func_index
         assert isinstance(func_index["bar"], ast.AsyncFunctionDef)
 
     def test_parent_map_links(self):
         tree = ast.parse("x = 1\n")
-        parent_map, func_index = _build_ast_analysis(tree)
+        func_index, node_index, parent_map = _build_ast_analysis(tree)
         # Every child should have a parent
         assert len(parent_map) > 0
         for child, parent in parent_map.items():
@@ -461,7 +461,7 @@ class TestBuildAstAnalysis:
 
     def test_empty_module(self):
         tree = ast.parse("")
-        parent_map, func_index = _build_ast_analysis(tree)
+        func_index, node_index, parent_map = _build_ast_analysis(tree)
         # Module itself is walked but has no children with parents
         assert isinstance(func_index, dict)
         assert isinstance(parent_map, dict)
@@ -473,7 +473,7 @@ def outer():
         pass
 """
         tree = ast.parse(code)
-        _, func_index = _build_ast_analysis(tree)
+        func_index, _, _ = _build_ast_analysis(tree)
         assert "outer" in func_index
         assert "inner" in func_index
 

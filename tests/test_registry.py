@@ -13,6 +13,7 @@ from smart_linter.registry import (
     _discover_builtin_rules,
     _discover_entry_points,
     _load_custom_rule,
+    _reset_cache,
     get_all_rules,
     register,
 )
@@ -76,12 +77,14 @@ class TestDiscoverBuiltinRules:
 
 class TestDiscoverEntryPoints:
     def test_returns_empty_when_no_entry_points(self):
+        _reset_cache()
         with patch("importlib.metadata.entry_points", side_effect=Exception("nope")):
             result = _discover_entry_points()
         assert isinstance(result, dict)
         assert len(result) == 0
 
     def test_loads_entry_point_rules(self):
+        _reset_cache()
         mock_ep = MagicMock()
         mock_ep.load.return_value = _StubRule
         with patch("importlib.metadata.entry_points", return_value=[mock_ep]):
@@ -90,6 +93,7 @@ class TestDiscoverEntryPoints:
         assert result["STUB001"] is _StubRule
 
     def test_skips_entry_points_without_id(self):
+        _reset_cache()
         class NoIdRule:
             pass
 
@@ -100,6 +104,7 @@ class TestDiscoverEntryPoints:
         assert len(result) == 0
 
     def test_handles_load_exception(self):
+        _reset_cache()
         mock_ep = MagicMock()
         mock_ep.load.side_effect = ImportError("broken")
         with patch("importlib.metadata.entry_points", return_value=[mock_ep]):
@@ -245,8 +250,9 @@ class TestGetAllRules:
 
 
 def test_discover_builtin_rules_handles_import_error():
-    from smart_linter.registry import _discover_builtin_rules
+    from smart_linter.registry import _discover_builtin_rules, _reset_cache
 
+    _reset_cache()
     with patch("smart_linter.registry.importlib.import_module", side_effect=ImportError("broken")):
         rules = _discover_builtin_rules()
     assert isinstance(rules, dict)

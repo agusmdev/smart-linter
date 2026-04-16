@@ -63,18 +63,34 @@ class StringConcatLoopRule(Rule):
     tags: ClassVar[tuple[str, ...]] = ("performance",)
 
     def check(self, tree: ast.AST, filename: str = "") -> list[Violation]:
-        parent_map = build_parent_map(tree)
-        string_inits = _build_string_init_map(tree)
+        parent_map = getattr(self, "_parent_map", None) or build_parent_map(tree)
+        node_index = getattr(self, "_node_index", None)
         violations: list[Violation] = []
 
-        for node in ast.walk(tree):
-            # Case 1: result += value  (AugAssign with Add)
-            if isinstance(node, ast.AugAssign) and isinstance(node.op, ast.Add):
-                self._check_aug_assign(node, parent_map, string_inits, filename, violations)
+        if node_index:
+            string_inits = {
+                target.id: node
+                for node in node_index.get(ast.Assign, [])
+                if len(node.targets) == 1
+                and isinstance((target := node.targets[0]), ast.Name)
+                and isinstance(node.value, ast.Constant)
+                and node.value.value == ""
+            }
 
-            # Case 2: result = result + value  (Assign with BinOp Add)
-            elif isinstance(node, ast.Assign) and isinstance(node.value, ast.BinOp):
-                self._check_assign_add(node, parent_map, string_inits, filename, violations)
+            for node in node_index.get(ast.AugAssign, []):
+                if isinstance(node.op, ast.Add):
+                    self._check_aug_assign(node, parent_map, string_inits, filename, violations)
+
+            for node in node_index.get(ast.Assign, []):
+                if isinstance(node.value, ast.BinOp):
+                    self._check_assign_add(node, parent_map, string_inits, filename, violations)
+        else:
+            string_inits = _build_string_init_map(tree)
+            for node in ast.walk(tree):
+                if isinstance(node, ast.AugAssign) and isinstance(node.op, ast.Add):
+                    self._check_aug_assign(node, parent_map, string_inits, filename, violations)
+                elif isinstance(node, ast.Assign) and isinstance(node.value, ast.BinOp):
+                    self._check_assign_add(node, parent_map, string_inits, filename, violations)
 
         return violations
 

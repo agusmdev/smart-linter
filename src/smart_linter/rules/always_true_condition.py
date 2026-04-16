@@ -229,7 +229,15 @@ class AlwaysTrueConditionRule(Rule):
 
     def check(self, tree: ast.AST, filename: str = "") -> list[Violation]:
         violations: list[Violation] = []
-        conditions = _collect_conditions(tree)
+        node_index = getattr(self, "_node_index", None)
+
+        if node_index:
+            conditions = []
+            for t in (ast.If, ast.While, ast.IfExp, ast.Assert):
+                for node in node_index.get(t, []):
+                    conditions.append(node.test)
+        else:
+            conditions = _collect_conditions(tree)
 
         for cond in conditions:
             self._check_expr(cond, filename, violations)

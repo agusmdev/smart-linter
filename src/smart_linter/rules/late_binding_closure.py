@@ -103,7 +103,38 @@ class LateBindingClosureRule(Rule):
 
     def check(self, tree: ast.AST, filename: str = "") -> list[Violation]:
         violations: list[Violation] = []
-        self._check_node(tree, set(), filename, violations)
+        node_index = getattr(self, "_node_index", None)
+        parent_map = getattr(self, "_parent_map", None)
+
+        if node_index and parent_map:
+            # Find all loops directly via node_index
+            loops = (
+                node_index.get(ast.For, [])
+                + node_index.get(ast.AsyncFor, [])
+                + node_index.get(ast.While, [])
+            )
+            if not loops:
+                return violations
+
+            for loop in loops:
+                loop_var_names = set()
+                if isinstance(loop, (ast.For, ast.AsyncFor)):
+                    loop_var_names = set(_extract_target_names(loop.target))
+
+                # Collect outer loop vars by walking ancestors
+                outer_loop_vars: set[str] = set()
+                ancestor = parent_map.get(loop)
+                while ancestor is not None:
+                    if isinstance(ancestor, (ast.For, ast.AsyncFor)):
+                        outer_loop_vars.update(_extract_target_names(ancestor.target))
+                    ancestor = parent_map.get(ancestor)
+
+                all_loop_vars = outer_loop_vars | loop_var_names
+                body = loop.body + (loop.orelse or [])
+                self._check_body_for_closures(body, all_loop_vars, filename, violations)
+        else:
+            self._check_node(tree, set(), filename, violations)
+
         return violations
 
     def _check_node(

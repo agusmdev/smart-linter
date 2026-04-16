@@ -111,9 +111,12 @@ class SqlInjectionRule(Rule):
 
         violations: list[Violation] = []
 
-        for node in ast.walk(tree):
-            if not isinstance(node, ast.Call):
-                continue
+        node_index = getattr(self, "_node_index", None)
+        call_nodes = node_index.get(ast.Call, []) if node_index else []
+        if not call_nodes:
+            call_nodes = (n for n in ast.walk(tree) if isinstance(n, ast.Call))
+
+        for node in call_nodes:
 
             if not isinstance(node.func, ast.Attribute):
                 continue

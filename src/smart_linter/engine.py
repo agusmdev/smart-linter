@@ -103,20 +103,58 @@ def _dict_to_violation(d: dict[str, Any]) -> Violation:
 # ---------------------------------------------------------------------------
 
 
+def _build_parent_map(tree: ast.AST) -> dict[ast.AST, ast.AST]:
+    """Build parent map lazily, only when a rule needs it."""
+    parent_map: dict[ast.AST, ast.AST] = {}
+    for parent in ast.walk(tree):
+        for child in ast.iter_child_nodes(parent):
+            parent_map[child] = parent
+    return parent_map
+
+
+# Node types that rules actually look up in node_index.
+# Only these are indexed; others are traversed but not stored.
+_INDEXED_TYPES = frozenset({
+    ast.Assign, ast.AugAssign, ast.Call, ast.ClassDef, ast.Try,
+    ast.For, ast.AsyncFor, ast.While, ast.AsyncFunctionDef,
+    ast.Module, ast.FunctionDef, ast.If, ast.Assert, ast.IfExp,
+})
+
+
 def _build_ast_analysis(
     tree: ast.AST,
 ) -> tuple[
-    dict[ast.AST, ast.AST],
     dict[str, ast.FunctionDef | ast.AsyncFunctionDef],
+    dict[type, list[ast.AST]],
+    dict[ast.AST, ast.AST],
 ]:
-    parent_map: dict[ast.AST, ast.AST] = {}
+    """Single-pass analysis: func_index, node_type_index, and parent_map."""
     func_index: dict[str, ast.FunctionDef | ast.AsyncFunctionDef] = {}
-    for parent in ast.walk(tree):
-        if isinstance(parent, (ast.FunctionDef, ast.AsyncFunctionDef)):
-            func_index[parent.name] = parent
-        for child in ast.iter_child_nodes(parent):
-            parent_map[child] = parent
-    return parent_map, func_index
+    node_index: dict[type, list[ast.AST]] = {}
+    parent_map: dict[ast.AST, ast.AST] = {}
+    stack = [tree]
+    while stack:
+        node = stack.pop()
+        node_type = type(node)
+        if node_type in _INDEXED_TYPES:
+            if node_type not in node_index:
+                node_index[node_type] = []
+            node_index[node_type].append(node)
+            if node_type is ast.FunctionDef or node_type is ast.AsyncFunctionDef:
+                func_index[node.name] = node
+        for field_name in node._fields:
+            value = getattr(node, field_name, None)
+            if value is None:
+                continue
+            if isinstance(value, ast.AST):
+                parent_map[value] = node
+                stack.append(value)
+            elif isinstance(value, list):
+                for item in value:
+                    if isinstance(item, ast.AST):
+                        parent_map[item] = node
+                        stack.append(item)
+    return func_index, node_index, parent_map
 
 
 # ---------------------------------------------------------------------------
@@ -216,7 +254,7 @@ def lint_single_file(
     except SyntaxError:
         return []
 
-    parent_map, func_index = _build_ast_analysis(tree)
+    func_index, node_index, parent_map = _build_ast_analysis(tree)
 
     violations: list[Violation] = []
 
@@ -238,6 +276,7 @@ def lint_single_file(
         rule = rule_cls()
         rule._parent_map = parent_map
         rule._func_index = func_index
+        rule._node_index = node_index
 
         try:
             violations.extend(rule.check(tree, filename=filepath_str))
@@ -245,6 +284,48 @@ def lint_single_file(
             continue
 
     return [_violation_to_dict(v) for v in violations]
+
+
+# ---------------------------------------------------------------------------
+# Optimized sequential path (no IPC overhead, direct rule instances)
+# ---------------------------------------------------------------------------
+
+
+def _lint_sequential_optimized(
+    uncached: list[tuple[str, str]],
+    rule_classes: dict[str, type],
+) -> list[dict[str, Any]]:
+    """Lint files sequentially with pre-instantiated rules and shared analysis."""
+    results: list[dict[str, Any]] = []
+
+    for filepath_str, source in uncached:
+        try:
+            tree = ast.parse(source, filename=filepath_str)
+        except SyntaxError:
+            continue
+
+        func_index, node_index, parent_map = _build_ast_analysis(tree)
+
+        for rule_id, rule_cls in rule_classes.items():
+            if hasattr(rule_cls, "should_check"):
+                try:
+                    if not rule_cls.should_check(source):
+                        continue
+                except Exception:
+                    pass
+
+            rule = rule_cls()
+            rule._parent_map = parent_map
+            rule._func_index = func_index
+            rule._node_index = node_index
+
+            try:
+                violations = rule.check(tree, filename=filepath_str)
+                results.extend(_violation_to_dict(v) for v in violations)
+            except Exception:
+                continue
+
+    return results
 
 
 # ---------------------------------------------------------------------------
@@ -333,13 +414,9 @@ def run(paths: list[Path], config: Config) -> list[Violation]:
     if uncached:
         if config.workers > 0:
             num_workers = min(config.workers, len(uncached))
-        else:
-            num_workers = min(os.cpu_count() or 1, len(uncached))
-
-        if num_workers > 1 and len(uncached) > 1:
             new_violation_dicts = _process_parallel(uncached, rule_info, num_workers)
         else:
-            new_violation_dicts = _process_sequential(uncached, rule_info)
+            new_violation_dicts = _lint_sequential_optimized(uncached, rule_classes)
 
         if use_cache and new_violation_dicts:
             by_file: dict[str, list[dict[str, Any]]] = {}
