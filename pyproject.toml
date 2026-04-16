@@ -58,6 +58,7 @@ unauthenticated_mutation = "smart_linter.rules.unauthenticated_mutation:Unauthen
 missing_response_model = "smart_linter.rules.missing_response_model:MissingResponseModelRule"
 lost_exception_context = "smart_linter.rules.lost_exception_context:LostExceptionContextRule"
 async_no_await = "smart_linter.rules.async_no_await:AsyncNoAwaitRule"
+basehttp_middleware = "smart_linter.rules.basehttp_middleware:BaseHTTPMiddlewareRule"
 
 [tool.setuptools.packages.find]
 where = ["src"]
