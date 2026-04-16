@@ -1,9 +1,0 @@
-{
-  "autonomy": "observe",
-  "analysisInterval": 10,
-  "maxTracesPerSession": 500,
-  "maxLessons": 200,
-  "dataDir": ".omp/metacognition",
-  "glmThinkingMode": true,
-  "reflectionLanguage": "bilingual"
-}
