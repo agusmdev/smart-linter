@@ -60,6 +60,7 @@ lost_exception_context = "smart_linter.rules.lost_exception_context:LostExceptio
 async_no_await = "smart_linter.rules.async_no_await:AsyncNoAwaitRule"
 basehttp_middleware = "smart_linter.rules.basehttp_middleware:BaseHTTPMiddlewareRule"
 jwt_algorithm = "smart_linter.rules.jwt_algorithm:JwtAlgorithmRule"
+missing_created_status = "smart_linter.rules.missing_created_status:MissingCreatedStatusRule"
 
 [tool.setuptools.packages.find]
 where = ["src"]
