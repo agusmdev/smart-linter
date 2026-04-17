@@ -58,7 +58,7 @@ smart-linter check src/ --format json >> lint-results.json
 Add to `ruff.toml` so `# noqa: ASYNC001` comments work:
 ```toml
 [lint]
-external = ["ASYNC001", "ERR001", "PERF001", "PERF002", "SEC001", "SEC002", "SEC003", "RES001", "MAIN001", "MAIN002", "LOGIC001"]
+external = ["ASYNC001", "ASYNC003", "ERR001", "ERR002", "FAST001", "PERF001", "PERF002", "SEC001", "SEC002", "SEC003", "SEC004", "SEC006", "RES001", "RESP001", "MAIN001", "MAIN002", "LOGIC001"]
 ```
 
 ## Pre-commit Hook
@@ -137,13 +137,19 @@ When connected, AI agents can directly:
 | Rule ID | Description | Severity |
 |---------|-------------|----------|
 | ASYNC001 | Detects sync blocking calls in async FastAPI endpoints | WARNING |
+| ASYNC003 | Detects async functions without await (should use `def`) | WARNING |
 | ERR001 | Detects exception handlers that silently swallow errors | WARNING |
+| ERR002 | Detects raise inside except without `from` (lost context) | WARNING |
+| FAST001 | Detects BaseHTTPMiddleware usage (use pure ASGI instead) | WARNING |
 | PERF001 | String concatenation using += inside loop (O(n²)) | INFO |
 | PERF002 | Unnecessary list comprehension (use generator expression) | INFO |
 | SEC001 | SQL injection via string formatting in queries | ERROR |
 | SEC002 | Hardcoded secrets/credentials in source code | ERROR |
 | SEC003 | Dangerous deserialization (pickle, yaml.load without safe Loader) | ERROR |
+| SEC004 | Unauthenticated mutation endpoints (POST/PUT/DELETE/PATCH without auth) | ERROR |
+| SEC006 | JWT decode without explicit algorithm (algorithm confusion attack) | ERROR |
 | RES001 | Resources opened without context manager (resource leak risk) | WARNING |
+| RESP001 | Missing response_model on API endpoint | WARNING |
 | MAIN001 | Mutable class attributes shared across all instances | WARNING |
 | MAIN002 | Late binding closure in loops (captures loop variable by reference) | WARNING |
 | LOGIC001 | Always-true or always-false conditions (logic errors) | WARNING |

@@ -14,6 +14,7 @@ cd "$PROJECT_ROOT"
 
 REPO1="/tmp/fastapi-benchmark/backend"
 REPO2="/tmp/fastapi-boiler/src"
+REPO3="/tmp/dispatch-bench/src"
 
 # Ensure repos exist
 if [ ! -d "$REPO1" ]; then
@@ -36,7 +37,7 @@ echo "METRIC total_rules=$TOTAL_RULES"
 # --- Run on real repos ---
 TOTAL_FINDINGS=0
 
-for REPO in "$REPO1" "$REPO2"; do
+for REPO in "$REPO1" "$REPO2" "$REPO3"; do
     if [ ! -d "$REPO" ]; then
         echo "SKIP: $REPO not found"
         continue

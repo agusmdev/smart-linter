@@ -38,6 +38,19 @@ AUTH_DEPENDENCY_SUBSTRINGS = frozenset({
     "oauth2_scheme",
     "get_api_key",
     "validate_api_key",
+    # Permission/authorization patterns
+    "permission",
+    "authorize",
+    "is_authenticated",
+    "is_authorized",
+    "require_role",
+    "require_permission",
+    "allow",
+    "deny",
+    "protect",
+    "secure",
+    "sensitive",
+    "owner",
 })
 
 # Auth-related type annotation names
@@ -141,7 +154,8 @@ def _has_dependencies_kwarg(decorator: ast.expr) -> list[str]:
     """Extract dependency names from dependencies=[Depends(...)] in decorator.
 
     Returns the inner names, e.g. for `dependencies=[Depends(get_current_user)]`
-    returns ["get_current_user"].
+    returns ["get_current_user"]. Also handles nested calls like
+    `Depends(PermissionsDependency([...]))`.
     """
     deps: list[str] = []
     if not isinstance(decorator, ast.Call):
@@ -151,10 +165,15 @@ def _has_dependencies_kwarg(decorator: ast.expr) -> list[str]:
             for elt in kw.value.elts:
                 if isinstance(elt, ast.Call):
                     # Depends(get_current_user) → extract get_current_user
-                    if elt.args:
-                        name = _get_qualified_name(elt.args[0])
+                    for arg in elt.args:
+                        name = _get_qualified_name(arg)
                         if name:
                             deps.append(name)
+                        # Handle nested Call: Depends(PermissionsDependency([...]))
+                        if isinstance(arg, ast.Call):
+                            inner_name = _get_qualified_name(arg.func)
+                            if inner_name:
+                                deps.append(inner_name)
                     # Also check the function name itself
                     func_name = _get_qualified_name(elt.func)
                     if func_name:
