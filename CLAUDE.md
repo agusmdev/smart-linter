@@ -58,7 +58,7 @@ smart-linter check src/ --format json >> lint-results.json
 Add to `ruff.toml` so `# noqa: ASYNC001` comments work:
 ```toml
 [lint]
-external = ["ASYNC001", "ASYNC003", "ERR001", "ERR002", "FAST001", "FAST002", "PERF001", "PERF002", "SEC001", "SEC002", "SEC003", "SEC004", "SEC005", "SEC006", "RES001", "RESP001", "MAIN001", "MAIN002", "LOGIC001"]
+external = ["ASYNC001", "ASYNC003", "ERR001", "ERR002", "FAST001", "FAST002", "PERF001", "PERF002", "SEC001", "SEC002", "SEC003", "SEC004", "SEC005", "SEC006", "SEC007", "RES001", "RESP001", "MAIN001", "MAIN002", "LOGIC001"]
 ```
 
 ## Pre-commit Hook
@@ -150,6 +150,7 @@ When connected, AI agents can directly:
 | SEC004 | Unauthenticated mutation endpoints (POST/PUT/DELETE/PATCH without auth) | ERROR |
 | SEC005 | Mass assignment via **model_dump()/dict() in ORM constructors | ERROR |
 | SEC006 | JWT decode without explicit algorithm (algorithm confusion attack) | ERROR |
+| SEC007 | CORS misconfiguration: allow_origins=["*"] with allow_credentials=True | ERROR |
 | RES001 | Resources opened without context manager (resource leak risk) | WARNING |
 | RESP001 | Missing response_model on API endpoint | WARNING |
 | MAIN001 | Mutable class attributes shared across all instances | WARNING |
