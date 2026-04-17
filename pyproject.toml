@@ -62,6 +62,7 @@ basehttp_middleware = "smart_linter.rules.basehttp_middleware:BaseHTTPMiddleware
 jwt_algorithm = "smart_linter.rules.jwt_algorithm:JwtAlgorithmRule"
 missing_created_status = "smart_linter.rules.missing_created_status:MissingCreatedStatusRule"
 mass_assignment = "smart_linter.rules.mass_assignment:MassAssignmentRule"
+cors_misconfiguration = "smart_linter.rules.cors_misconfiguration:CorsMisconfigurationRule"
 
 [tool.setuptools.packages.find]
 where = ["src"]
