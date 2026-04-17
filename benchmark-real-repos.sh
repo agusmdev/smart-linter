@@ -130,7 +130,7 @@ async def create_item(
     item_in: ItemCreate,
 ) -> Any:
     """Create new item."""
-    item = Item(**item_in.model_dump(), owner_id=current_user.id)
+    item = Item(name=item_in.name, description=item_in.description, owner_id=current_user.id)
     session.add(item)
     await session.commit()
     await session.refresh(item)
